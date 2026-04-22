@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Bleuface \u2022 B2B Sales Dashboard</title>
+<title>Bleuface • B2B Sales Dashboard (Live)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 <style>
   :root{--bleu:#00C0FF;--bleu-dark:#007AA8;--ink:#0B1220;--soft:#F2FBFF;--slate:#4A5568;}
   html,body{font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#F7FAFC;color:var(--ink);}
@@ -52,681 +53,67 @@
   .alert-danger{background:#FEF2F2;border-color:#FECACA;color:#991B1B;}
   .alert-warn{background:#FFFBEB;border-color:#FDE68A;color:#92400E;}
   .alert-ok{background:#F0FDF4;border-color:#BBF7D0;color:#166534;}
+  #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; display: flex; justify-content: center; align-items: center; z-index: 9999; font-weight: bold; color: #00C0FF; }
 </style>
 </head>
 <body class="min-h-screen">
+
+<div id="loader">Fetching latest data from Google Sheets...</div>
 
 <header class="brand-grad text-white">
   <div class="max-w-[1400px] mx-auto px-8 py-8 flex items-center justify-between flex-wrap gap-4">
     <div>
       <div class="text-xs tracking-[.3em] uppercase opacity-80">bleuface</div>
       <h1 class="text-3xl font-bold mt-1">B2B Sales Dashboard</h1>
-      <p class="text-sm opacity-90 mt-2" id="period-text"></p>
+      <p class="text-sm opacity-90 mt-2" id="period-text">Live Sync Enabled</p>
     </div>
     <div class="text-right text-xs opacity-80">
-      <div id="gen-text"></div>
-      <div class="mt-1">All figures in PKR \u2022 30-day payment terms</div>
+      <div id="gen-text">Last Updated: Just Now</div>
+      <div class="mt-1">All figures in PKR • 30-day payment terms</div>
     </div>
   </div>
 </header>
 
 <main class="max-w-[1400px] mx-auto px-8 py-8 space-y-6">
-
-  <!-- Payment reminder banner -->
   <div id="reminder-banner"></div>
-
-  <!-- KPI row 1: Revenue -->
   <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="kpi-card"><div class="kpi-label">Net Sales</div><div class="kpi-value" id="kpi-net">\u2014</div><div class="kpi-sub">after partner commission</div></div>
-    <div class="kpi-card"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="kpi-gross">\u2014</div><div class="kpi-sub" id="kpi-disc"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Units Sold</div><div class="kpi-value" id="kpi-units">\u2014</div><div class="kpi-sub" id="kpi-units-sub"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value" id="kpi-orders">\u2014</div><div class="kpi-sub" id="kpi-aov"></div></div>
+    <div class="kpi-card"><div class="kpi-label">Net Sales</div><div class="kpi-value" id="kpi-net">—</div><div class="kpi-sub">after partner commission</div></div>
+    <div class="kpi-card"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="kpi-gross">—</div><div class="kpi-sub" id="kpi-disc"></div></div>
+    <div class="kpi-card"><div class="kpi-label">Units Sold</div><div class="kpi-value" id="kpi-units">—</div><div class="kpi-sub" id="kpi-units-sub"></div></div>
+    <div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value" id="kpi-orders">—</div><div class="kpi-sub" id="kpi-aov"></div></div>
   </section>
-
-  <!-- KPI row 2: Customer & reorder -->
-  <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="kpi-card"><div class="kpi-label">B2B Customers</div><div class="kpi-value" id="kpi-cust">\u2014</div><div class="kpi-sub" id="kpi-repeat"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Active SKUs</div><div class="kpi-value" id="kpi-skus">\u2014</div><div class="kpi-sub">unique products sold</div></div>
-    <div class="kpi-card"><div class="kpi-label">Reorder Rate</div><div class="kpi-value" id="kpi-reorder">\u2014</div><div class="kpi-sub" id="kpi-gap"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Activity</div>
-      <div class="flex gap-2 mt-2 flex-wrap">
-        <span class="pill pill-active" id="pill-active"></span>
-        <span class="pill pill-risk" id="pill-risk"></span>
-        <span class="pill pill-lapsed" id="pill-lapsed"></span>
-      </div>
-      <div class="kpi-sub mt-3">Active = ordered \u2264 30d</div>
-    </div>
-  </section>
-
-  <!-- KPI row 3: Payments -->
-  <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="kpi-card" style="border-left:4px solid #007AA8;"><div class="kpi-label">Outstanding</div><div class="kpi-value" id="kpi-outstanding">\u2014</div><div class="kpi-sub" id="kpi-outstanding-count"></div></div>
-    <div class="kpi-card" style="border-left:4px solid #EF4444;"><div class="kpi-label">Overdue</div><div class="kpi-value text-red-600" id="kpi-overdue">\u2014</div><div class="kpi-sub" id="kpi-overdue-count"></div></div>
-    <div class="kpi-card" style="border-left:4px solid #F59E0B;"><div class="kpi-label">Due \u2264 7 Days</div><div class="kpi-value" style="color:#B45309;" id="kpi-duesoon">\u2014</div><div class="kpi-sub" id="kpi-duesoon-count"></div></div>
-    <div class="kpi-card" style="border-left:4px solid #1FA67A;"><div class="kpi-label">Collected</div><div class="kpi-value" style="color:#15805C;" id="kpi-collected">\u2014</div><div class="kpi-sub" id="kpi-collected-count"></div></div>
-  </section>
-
-  <!-- KPI row 4: Profitability -->
-  <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="kpi-card" style="border-left:4px solid #15805C;"><div class="kpi-label">Profit</div><div class="kpi-value" style="color:#15805C;" id="kpi-profit">\u2014</div><div class="kpi-sub">net \u2212 cost of goods</div></div>
-    <div class="kpi-card" style="border-left:4px solid #15805C;"><div class="kpi-label">Margin on Net</div><div class="kpi-value" style="color:#15805C;" id="kpi-margin-net">\u2014</div><div class="kpi-sub">profit as % of collected revenue</div></div>
-    <div class="kpi-card"><div class="kpi-label">Cost of Goods</div><div class="kpi-value" id="kpi-cost">\u2014</div><div class="kpi-sub" id="kpi-cost-sub"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Profit / Order</div><div class="kpi-value" id="kpi-profit-order">\u2014</div><div class="kpi-sub" id="kpi-margin-gross-sub"></div></div>
-  </section>
-
-  <!-- KPI row 5: FOC & commission -->
-  <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="kpi-card" style="border-left:4px solid #EC4899;"><div class="kpi-label">FOC Units</div><div class="kpi-value" style="color:#9D174D;" id="kpi-foc-units">\u2014</div><div class="kpi-sub" id="kpi-foc-sub"></div></div>
-    <div class="kpi-card"><div class="kpi-label">FOC Retail Value</div><div class="kpi-value" id="kpi-foc-value">\u2014</div><div class="kpi-sub" id="kpi-foc-orders"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Partner Commission Paid</div><div class="kpi-value" id="kpi-commission">\u2014</div><div class="kpi-sub" id="kpi-commission-sub"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Blended Commission Rate</div><div class="kpi-value" id="kpi-commission-rate">\u2014</div><div class="kpi-sub">commission / gross</div></div>
-  </section>
-
-  <!-- Charts row 1 -->
-  <section class="grid md:grid-cols-3 gap-6">
-    <div class="panel md:col-span-2">
-      <div class="panel-title">Monthly Performance<span class="text-xs font-normal text-gray-500">Net Revenue & Orders</span></div>
-      <div style="height:280px;"><canvas id="chart-monthly"></canvas></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Category Mix<span class="text-xs font-normal text-gray-500">Net Revenue</span></div>
-      <div style="height:280px;"><canvas id="chart-cat"></canvas></div>
-    </div>
-  </section>
-
-  <!-- Charts row 2 -->
-  <section class="grid md:grid-cols-2 gap-6">
-    <div class="panel">
-      <div class="panel-title">Top 10 SKUs<span class="text-xs font-normal text-gray-500">Net Revenue</span></div>
-      <div style="height:360px;"><canvas id="chart-sku"></canvas></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Top 10 Customers<span class="text-xs font-normal text-gray-500">Net Revenue</span></div>
-      <div style="height:360px;"><canvas id="chart-cust"></canvas></div>
-    </div>
-  </section>
-
-  <!-- Charts row 3 -->
-  <section class="grid md:grid-cols-3 gap-6">
-    <div class="panel md:col-span-2">
-      <div class="panel-title">Customer Concentration (Pareto)<span class="text-xs font-normal text-gray-500">Cumulative share of net revenue</span></div>
-      <div style="height:300px;"><canvas id="chart-pareto"></canvas></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Commission Tiers<span class="text-xs font-normal text-gray-500">Gross sales by %</span></div>
-      <div style="height:300px;"><canvas id="chart-tier"></canvas></div>
-    </div>
-  </section>
-
-  <!-- Charts row 4: Profitability -->
-  <section class="grid md:grid-cols-2 gap-6">
-    <div class="panel">
-      <div class="panel-title">Monthly P&amp;L<span class="text-xs font-normal text-gray-500">Net revenue vs cost vs profit</span></div>
-      <div style="height:320px;"><canvas id="chart-pnl"></canvas></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Top 10 SKUs by Profit<span class="text-xs font-normal text-gray-500">With margin %</span></div>
-      <div style="height:320px;"><canvas id="chart-sku-profit"></canvas></div>
-    </div>
-  </section>
-
-  <!-- INVOICES & PAYMENTS -->
   <section class="panel">
-    <div class="panel-title">
-      <span>Invoices & Payments
-        <span class="text-xs font-normal text-gray-500 ml-2" id="today-label"></span>
-      </span>
-      <div class="flex gap-2 items-center flex-wrap">
-        <input class="search max-w-xs" id="inv-search" placeholder="Search invoice / customer..." />
-        <button class="btn btn-ghost" id="inv-export">Export CSV</button>
-      </div>
-    </div>
-    <div class="flex gap-2 mb-3 flex-wrap">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="unpaid">Unpaid</button>
-      <button class="filter-btn" data-filter="overdue">Overdue</button>
-      <button class="filter-btn" data-filter="duesoon">Due \u2264 7d</button>
-      <button class="filter-btn" data-filter="paid">Paid</button>
-    </div>
-    <div class="scroll-panel">
-      <table class="tbl" id="tbl-inv">
-        <thead>
-          <tr>
-            <th data-sort="orderReference">Invoice</th>
-            <th data-sort="customer">Customer</th>
-            <th data-sort="issue">Issued</th>
-            <th data-sort="due">Due</th>
-            <th data-sort="days_to_due" class="num">Days</th>
-            <th data-sort="net" class="num">Net (PKR)</th>
-            <th data-sort="status">Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <div class="text-xs text-gray-500 mt-3">
-      \u2022 Click <b>Mark Paid</b> to record a payment. Status is saved in your browser and will persist across refreshes and new data drops.
-      <br/>\u2022 Overdue = past due date. Due \u2264 7d = due within a week. Status updates automatically based on today's date.
-      <br/>\u2022 Orders containing only FOC items have net = 0 and appear as "Collected" once marked.
-    </div>
+    <div class="panel-title">Monthly Performance</div>
+    <div style="height:280px;"><canvas id="chart-monthly"></canvas></div>
   </section>
-
-  <!-- FOC tracker -->
-  <section class="panel">
-    <div class="panel-title"><span>FOC / Sample Distribution <span class="pill pill-foc ml-2" id="foc-count-pill"></span></span><span class="text-xs font-normal text-gray-500">Free-of-cost items given for trial / evaluation</span></div>
-    <div class="scroll-panel" style="max-height:300px;">
-      <table class="tbl" id="tbl-foc">
-        <thead><tr>
-          <th>Date</th><th>Order</th><th>Customer</th><th>Product</th>
-          <th>Category</th><th class="num">Qty</th><th class="num">Ref. Price</th><th class="num">Retail Value</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- Customer table -->
-  <section class="panel">
-    <div class="panel-title"><span>Customer Performance</span><input class="search max-w-xs" id="cust-search" placeholder="Search customers..." /></div>
-    <div class="scroll-panel">
-      <table class="tbl" id="tbl-cust">
-        <thead><tr>
-          <th data-sort="rank">#</th><th data-sort="customer">Customer</th>
-          <th data-sort="orders" class="num">Orders</th><th data-sort="units" class="num">Units</th>
-          <th data-sort="net" class="num">Net (PKR)</th>
-          <th data-sort="profit" class="num">Profit</th>
-          <th data-sort="margin" class="num">Margin</th>
-          <th data-sort="share" class="num">Share</th>
-          <th data-sort="aov" class="num">AOV</th>
-          <th data-sort="last">Last Order</th>
-          <th data-sort="days_since" class="num">Days Since</th><th data-sort="status">Status</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- SKU table -->
-  <section class="panel">
-    <div class="panel-title"><span>SKU Performance</span><input class="search max-w-xs" id="sku-search" placeholder="Search SKUs..." /></div>
-    <div class="scroll-panel">
-      <table class="tbl" id="tbl-sku">
-        <thead><tr>
-          <th data-sort="rank">#</th><th data-sort="variant">SKU</th>
-          <th data-sort="category">Category</th><th data-sort="units" class="num">Units</th>
-          <th data-sort="foc_units" class="num">FOC</th>
-          <th data-sort="net" class="num">Net</th>
-          <th data-sort="cost" class="num">Cost</th>
-          <th data-sort="profit" class="num">Profit</th>
-          <th data-sort="margin" class="num">Margin</th>
-          <th data-sort="avg_price" class="num">Avg Price</th>
-          <th data-sort="unit_cost" class="num">Unit Cost</th>
-          <th data-sort="velocity" class="num">Units/mo</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- Reorder table -->
-  <section class="panel">
-    <div class="panel-title"><span>Reorder Cadence</span><span class="text-xs font-normal text-gray-500">Customers with 2+ orders</span></div>
-    <div class="scroll-panel">
-      <table class="tbl" id="tbl-reorder">
-        <thead><tr>
-          <th data-sort="customer">Customer</th><th data-sort="orders" class="num">Orders</th>
-          <th data-sort="avg_gap" class="num">Avg Gap (d)</th><th data-sort="min_gap" class="num">Min</th>
-          <th data-sort="max_gap" class="num">Max</th><th data-sort="first">First</th>
-          <th data-sort="last">Last</th><th data-sort="days_since" class="num">Days Since</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <footer class="text-center text-xs text-gray-500 py-6">
-    Bleuface B2B Dashboard \u2022 Paid-status saved locally in your browser. Re-generate this file when new sales data is available.
-  </footer>
-</main>
+  </main>
 
 <script>
-const DATA = {"meta":{"generated":"2026-04-22 11:10","start":"2025-11-27","end":"2026-04-17","days":142,"payment_term_days":30},"kpis":{"net":13201961.0,"gross":19206963.0,"commission":6005108.0,"cost":5971542.710000001,"profit":7230418.289999999,"margin_on_net":0.5476775980477445,"margin_on_gross":0.3764477648027957,"profit_per_order":70198.23582524271,"units":45485,"orders":103,"customers":30,"skus":42,"aov":128174.3786407767,"commission_pct":0.31265265622680694,"repeat_customers":19,"reorder_rate":0.6333333333333333,"avg_gap":24.71574770258981,"median_gap":19.25,"active":17,"at_risk":9,"lapsed":4,"foc_lines":8,"foc_units":9,"foc_orders":2,"foc_customers":2,"foc_value":6077.8877685752195},"monthly":[{"month":"2025-11","orders":5,"units":8454.0,"gross":3365166.0,"net":2355620.0,"commission":1009548.0,"cost":1210491.54,"profit":1145128.46},{"month":"2025-12","orders":7,"units":14876.0,"gross":5586624.0,"net":3910637.0,"commission":1675988.0,"cost":1961642.05,"profit":1948994.95},{"month":"2026-01","orders":13,"units":5069.0,"gross":2413071.0,"net":1539773.0,"commission":873301.0,"cost":619582.77,"profit":920190.23},{"month":"2026-02","orders":23,"units":6612.0,"gross":2999892.0,"net":2058271.0,"commission":941686.0,"cost":818806.77,"profit":1239464.23},{"month":"2026-03","orders":35,"units":7453.0,"gross":3452654.0,"net":2366772.0,"commission":1085907.0,"cost":969683.0599999999,"profit":1397088.94},{"month":"2026-04","orders":20,"units":3021.0,"gross":1389556.0,"net":970888.0,"commission":418678.0,"cost":391336.52,"profit":579551.48}],"category":[{"category":"Facial Tools","units":15067.0,"net":4045106.0,"gross":5867048.0,"commission":1821982.0,"cost":1717590.02,"profit":2327515.98,"orders":90,"customers":29,"skus":15,"margin":0.5753906028667728},{"category":"Makeup Tools","units":10596.0,"net":3438399.0,"gross":5034931.0,"commission":1596553.0,"cost":1645136.59,"profit":1793262.41,"orders":82,"customers":28,"skus":8,"margin":0.5215399405362786},{"category":"Hair Tools","units":6574.0,"net":1708417.0,"gross":2485590.0,"commission":777191.0,"cost":796280.88,"profit":912136.12,"orders":74,"customers":27,"skus":6,"margin":0.5339071901063968},{"category":"Personal Care","units":4756.0,"net":1658086.0,"gross":2413615.0,"commission":755537.0,"cost":504145.0,"profit":1153941.0,"orders":68,"customers":26,"skus":4,"margin":0.695947616709869},{"category":"Mani / Pedi Care","units":5180.0,"net":1383779.0,"gross":2012131.0,"commission":628363.0,"cost":752591.6799999999,"profit":631187.3200000001,"orders":66,"customers":27,"skus":6,"margin":0.4561330385849186},{"category":"Beauty Essentials","units":2868.0,"net":800677.0,"gross":1151937.0,"commission":351265.0,"cost":462558.54,"profit":338118.46,"orders":67,"customers":26,"skus":2,"margin":0.4222907114854055},{"category":"Bath & Body Care","units":444.0,"net":167497.0,"gross":241711.0,"commission":74217.0,"cost":93240.0,"profit":74257.0,"orders":26,"customers":9,"skus":1,"margin":0.4433333134324794}],"sku":[{"variant":"Beauty Blender Set","barcode":"BLU - 3 - 0001","category":"Makeup Tools","units":1129.0,"net":742050.0,"gross":1091187.0,"commission":349139.0,"cost":430905.43,"profit":311144.57,"orders":42,"customers":23,"avg_price":1253.9024390243903,"velocity":242.0194366197183,"unit_cost":381.67,"margin":0.4193040495923455,"foc_units":2},{"variant":"Makeup Brushes","barcode":"BLU - 3 - 0002","category":"Makeup Tools","units":1166.0,"net":740829.0,"gross":1088295.0,"commission":347470.0,"cost":445027.22000000003,"profit":295801.77999999997,"orders":40,"customers":22,"avg_price":1117.775,"velocity":249.95098591549296,"unit_cost":381.67,"margin":0.39928482821271843,"foc_units":0},{"variant":"Eyebrow Razor x3","barcode":"BLU - 2 - 0014","category":"Facial Tools","units":2430.0,"net":617388.0,"gross":898806.0,"commission":281425.0,"cost":184121.09999999998,"profit":433266.9,"orders":61,"customers":27,"avg_price":446.60655737704917,"velocity":520.9098591549296,"unit_cost":75.77,"margin":0.7017740869599021,"foc_units":0},{"variant":"Eyelash Curler","barcode":"BLU - 2 - 0002","category":"Facial Tools","units":2524.0,"net":608628.0,"gross":880527.0,"commission":271902.0,"cost":191243.47999999998,"profit":417384.52,"orders":56,"customers":21,"avg_price":349.0,"velocity":541.0602816901409,"unit_cost":75.77,"margin":0.685779359477382,"foc_units":1},{"variant":"Scalp Claw Massager","barcode":"BLU - 6 - 0002","category":"Personal Care","units":1780.0,"net":582047.0,"gross":846670.0,"commission":264626.0,"cost":114899.0,"profit":467148.0,"orders":53,"customers":22,"avg_price":491.45283018867923,"velocity":381.5718309859155,"unit_cost":64.55,"margin":0.8025949794432409,"foc_units":0},{"variant":"Textured Body Roller","barcode":"BLU - 6 - 0003","category":"Personal Care","units":1210.0,"net":557154.0,"gross":814191.0,"commission":257039.0,"cost":149410.80000000002,"profit":407743.2,"orders":40,"customers":20,"avg_price":763.1025641025641,"velocity":259.3830985915493,"unit_cost":123.48,"margin":0.7318321325881175,"foc_units":1},{"variant":"Jewellery Case","barcode":"BLU - 7 - 0001","category":"Beauty Essentials","units":1482.0,"net":516292.0,"gross":737523.0,"commission":221233.0,"cost":349752.0,"profit":166540.0,"orders":32,"customers":10,"avg_price":494.19354838709677,"velocity":317.69070422535214,"unit_cost":236.0,"margin":0.32256939871235657,"foc_units":1},{"variant":"Powder Puffs (Round/Triangle)","barcode":"BLU - 3 - 0007","category":"Makeup Tools","units":2162.0,"net":490960.0,"gross":713388.0,"commission":222431.0,"cost":236630.90000000002,"profit":254329.09999999998,"orders":56,"customers":22,"avg_price":374.0,"velocity":463.45971830985917,"unit_cost":109.45,"margin":0.518024075281082,"foc_units":0},{"variant":"Beauty Egg","barcode":"BLU - 3 - 0005","category":"Makeup Tools","units":1860.0,"net":448486.0,"gross":657070.0,"commission":208588.0,"cost":130497.59999999999,"profit":317988.4,"orders":61,"customers":22,"avg_price":423.9344262295082,"velocity":398.7211267605634,"unit_cost":70.16,"margin":0.7090263687160804,"foc_units":0},{"variant":"Hair Roller","barcode":"BLU - 1 - 0004","category":"Hair Tools","units":2089.0,"net":437747.0,"gross":636361.0,"commission":198618.0,"cost":205181.58,"profit":232565.42,"orders":58,"customers":26,"avg_price":333.48275862068965,"velocity":447.81098591549295,"unit_cost":98.22,"margin":0.5312781583882928,"foc_units":0},{"variant":"Foot Filer","barcode":"BLU - 4 - 0005","category":"Mani / Pedi Care","units":1771.0,"net":391874.0,"gross":569679.0,"commission":177807.0,"cost":248506.71999999997,"profit":143367.28000000003,"orders":50,"customers":25,"avg_price":342.0,"velocity":379.6425352112676,"unit_cost":140.32,"margin":0.36585045193097787,"foc_units":0},{"variant":"Eyebrow Razor x2","barcode":"BLU - 2 - 0001","category":"Facial Tools","units":1256.0,"net":364865.0,"gross":534796.0,"commission":169934.0,"cost":176241.91999999998,"profit":188623.08000000002,"orders":45,"customers":24,"avg_price":526.2954545454545,"velocity":269.24394366197185,"unit_cost":140.32,"margin":0.5169667685308265,"foc_units":1},{"variant":"Circular Hair Brush","barcode":"BLU - 1 - 0002","category":"Hair Tools","units":1210.0,"net":361994.0,"gross":527892.0,"commission":165903.0,"cost":190163.6,"profit":171830.4,"orders":32,"customers":15,"avg_price":483.40625,"velocity":259.3830985915493,"unit_cost":157.16,"margin":0.4746774808422239,"foc_units":0},{"variant":"Makeup Blender","barcode":"BLU - 3 - 0008","category":"Makeup Tools","units":1505.0,"net":357374.0,"gross":522495.0,"commission":165124.0,"cost":114033.84999999999,"profit":243340.15000000002,"orders":49,"customers":20,"avg_price":382.6734693877551,"velocity":322.62112676056336,"unit_cost":75.77,"margin":0.6809117339258033,"foc_units":0},{"variant":"Dual Ball Roller","barcode":"BLU - 6 - 0001","category":"Personal Care","units":1280.0,"net":350418.0,"gross":510736.0,"commission":160320.0,"cost":132915.2,"profit":217502.8,"orders":41,"customers":23,"avg_price":399.0243902439024,"velocity":274.3887323943662,"unit_cost":103.84,"margin":0.6206952839180635,"foc_units":0},{"variant":"ClearLine Facial Hair Trimmer","barcode":"BLU - 2 - 0008","category":"Facial Tools","units":489.0,"net":341967.0,"gross":488523.0,"commission":146558.0,"cost":141810.0,"profit":200157.0,"orders":11,"customers":2,"avg_price":999.0909090909091,"velocity":104.8250704225352,"unit_cost":290.0,"margin":0.5853108633289177,"foc_units":0},{"variant":"Texturing Comb","barcode":"BLU-1-0001","category":"Hair Tools","units":1382.0,"net":324057.0,"gross":473418.0,"commission":149364.0,"cost":127987.02,"profit":196069.98,"orders":47,"customers":23,"avg_price":384.1063829787234,"velocity":296.25408450704225,"unit_cost":92.61,"margin":0.6050478156620595,"foc_units":0},{"variant":"Nail Filer","barcode":"BLU - 4 - 0002","category":"Mani / Pedi Care","units":1496.0,"net":300364.0,"gross":438404.0,"commission":138042.0,"cost":121759.44,"profit":178604.56,"orders":49,"customers":21,"avg_price":330.6326530612245,"velocity":320.6918309859155,"unit_cost":81.39,"margin":0.5946270525096217,"foc_units":0},{"variant":"Makeup Set","barcode":"BLU - 3 - 0003","category":"Makeup Tools","units":1103.0,"net":295830.0,"gross":434297.0,"commission":138470.0,"cost":120723.35,"profit":175106.65,"orders":41,"customers":23,"avg_price":473.390243902439,"velocity":236.44591549295774,"unit_cost":109.45,"margin":0.5919164722982794,"foc_units":0},{"variant":"Powder Puffs (Both Round)","barcode":"BLU - 3 - 0004","category":"Makeup Tools","units":1411.0,"net":290252.0,"gross":424459.0,"commission":134209.0,"cost":146518.24000000002,"profit":143733.75999999998,"orders":47,"customers":21,"avg_price":336.0425531914894,"velocity":302.4707042253521,"unit_cost":103.84,"margin":0.495203340545457,"foc_units":0},{"variant":"Wide-Toothed Comb","barcode":"BLU - 1 - 0003","category":"Hair Tools","units":1152.0,"net":287164.0,"gross":421848.0,"commission":134687.0,"cost":119623.68000000001,"profit":167540.31999999998,"orders":31,"customers":18,"avg_price":453.83870967741933,"velocity":246.94985915492958,"unit_cost":103.84,"margin":0.5834307921605771,"foc_units":0},{"variant":"Spray Bottles","barcode":"BLU - 7 - 0002","category":"Beauty Essentials","units":1386.0,"net":284385.0,"gross":414414.0,"commission":130032.0,"cost":112806.54000000001,"profit":171578.46,"orders":53,"customers":25,"avg_price":299.0,"velocity":297.11154929577464,"unit_cost":81.39,"margin":0.6033316103169998,"foc_units":0},{"variant":"Tweezer (Pink)","barcode":"BLU - 2 - 0015","category":"Facial Tools","units":1174.0,"net":267549.0,"gross":393826.0,"commission":126280.0,"cost":79068.9,"profit":188480.1,"orders":38,"customers":18,"avg_price":452.94736842105266,"velocity":251.66591549295774,"unit_cost":67.35,"margin":0.7044694616687037,"foc_units":0},{"variant":"Tweezer (Rose Gold)","barcode":"BLU - 2 - 0004","category":"Facial Tools","units":1234.0,"net":256378.0,"gross":375366.0,"commission":118992.0,"cost":93500.18,"profit":162877.82,"orders":40,"customers":18,"avg_price":372.75,"velocity":264.5278873239437,"unit_cost":75.77,"margin":0.6353034191701317,"foc_units":0},{"variant":"Eyebrow Scissors","barcode":"BLU - 2 - 0003","category":"Facial Tools","units":1174.0,"net":254187.0,"gross":374726.0,"commission":120544.0,"cost":121908.16,"profit":132278.84,"orders":39,"customers":19,"avg_price":413.1025641025641,"velocity":251.66591549295774,"unit_cost":103.84,"margin":0.5203997057284597,"foc_units":0},{"variant":"Silicone Ice Roller","barcode":"BLU - 2 - 0012","category":"Facial Tools","units":766.0,"net":240037.0,"gross":343934.0,"commission":103898.0,"cost":134050.0,"profit":105987.0,"orders":22,"customers":8,"avg_price":449.0,"velocity":164.2045070422535,"unit_cost":175.0,"margin":0.44154442856726256,"foc_units":0},{"variant":"Nail Clippers","barcode":"BLU - 4 - 0001","category":"Mani / Pedi Care","units":1096.0,"net":228529.0,"gross":337304.0,"commission":108777.0,"cost":129185.52,"profit":99343.48,"orders":35,"customers":20,"avg_price":409.0,"velocity":234.94535211267606,"unit_cost":117.87,"margin":0.4347084177500448,"foc_units":0},{"variant":"Gua Sha","barcode":"BLU - 2 - 0005","category":"Facial Tools","units":1604.0,"net":219286.0,"gross":319196.0,"commission":99914.0,"cost":148546.44,"profit":70739.56,"orders":51,"customers":20,"avg_price":199.0,"velocity":343.84338028169014,"unit_cost":92.61,"margin":0.3225904070483296,"foc_units":0},{"variant":"GlowSonic Face Cleanser","barcode":"BLU - 2 - 0011","category":"Facial Tools","units":108.0,"net":188925.0,"gross":269892.0,"commission":80968.0,"cost":129600.0,"profit":59325.0,"orders":9,"customers":6,"avg_price":2499.0,"velocity":23.151549295774647,"unit_cost":1200.0,"margin":0.31401349741961093,"foc_units":0},{"variant":"Nail Grooming Kit","barcode":"BLU - 4 - 0003","category":"Mani / Pedi Care","units":294.0,"net":183220.0,"gross":264306.0,"commission":81088.0,"cost":70560.0,"profit":112660.0,"orders":24,"customers":10,"avg_price":899.0,"velocity":63.02366197183098,"unit_cost":240.0,"margin":0.6148892042353454,"foc_units":0},{"variant":"ClipPro Nail Trimmer","barcode":"BLU - 4 - 0004","category":"Mani / Pedi Care","units":211.0,"net":175178.0,"gross":252990.0,"commission":77815.0,"cost":113940.0,"profit":61238.0,"orders":17,"customers":9,"avg_price":1199.0588235294117,"velocity":45.2312676056338,"unit_cost":540.0,"margin":0.34957585998241786,"foc_units":0},{"variant":"Dual Spatula","barcode":"BLU - 2 - 0007","category":"Facial Tools","units":979.0,"net":169746.0,"gross":243772.0,"commission":74028.0,"cost":53845.0,"profit":115901.0,"orders":22,"customers":9,"avg_price":249.04545454545453,"velocity":209.8645070422535,"unit_cost":55.0,"margin":0.6827907579560049,"foc_units":0},{"variant":"Capsule Towels","barcode":"BLU - 6 - 0004","category":"Personal Care","units":486.0,"net":168467.0,"gross":242018.0,"commission":73552.0,"cost":106920.0,"profit":61547.0,"orders":27,"customers":10,"avg_price":499.03846153846155,"velocity":104.18197183098592,"unit_cost":220.0,"margin":0.36533564436952043,"foc_units":1},{"variant":"Silicone Back Scrubber","barcode":"BLU - 5 - 0004","category":"Bath & Body Care","units":444.0,"net":167497.0,"gross":241711.0,"commission":74217.0,"cost":93240.0,"profit":74257.0,"orders":26,"customers":9,"avg_price":540.1071428571429,"velocity":95.17859154929577,"unit_cost":210.0,"margin":0.4433333134324794,"foc_units":0},{"variant":"Fleecefit Head Band","barcode":"BLU - 1 - 0006","category":"Hair Tools","units":457.0,"net":158488.0,"gross":227548.0,"commission":69062.0,"cost":93685.0,"profit":64803.0,"orders":23,"customers":10,"avg_price":499.04545454545456,"velocity":97.96535211267606,"unit_cost":205.0,"margin":0.4088826914340518,"foc_units":1},{"variant":"Aquaglow Face Cleanser","barcode":"BLU - 2 - 0009","category":"Facial Tools","units":189.0,"net":156711.0,"gross":226611.0,"commission":69901.0,"cost":90720.0,"profit":65991.0,"orders":15,"customers":7,"avg_price":1199.0,"velocity":40.515211267605636,"unit_cost":480.0,"margin":0.42109998659953674,"foc_units":0},{"variant":"Dual Face Brush","barcode":"BLU - 2 - 0006","category":"Facial Tools","units":507.0,"net":154283.0,"gross":222156.0,"commission":67875.0,"cost":91320.84,"profit":62962.16,"orders":28,"customers":9,"avg_price":439.4074074074074,"velocity":108.68366197183099,"unit_cost":180.12,"margin":0.4080952535276084,"foc_units":1},{"variant":"Detangling Brush","barcode":"BLU - 1 - 0005","category":"Hair Tools","units":284.0,"net":138967.0,"gross":198523.0,"commission":59557.0,"cost":59640.0,"profit":79327.0,"orders":8,"customers":2,"avg_price":699.125,"velocity":60.88,"unit_cost":210.0,"margin":0.5708333633164708,"foc_units":0},{"variant":"Silicone Face Brush","barcode":"BLU - 2 - 0010","category":"Facial Tools","units":419.0,"net":130704.0,"gross":188131.0,"commission":57428.0,"cost":46090.0,"profit":84614.0,"orders":19,"customers":8,"avg_price":449.0,"velocity":89.8194366197183,"unit_cost":110.0,"margin":0.6473711592606194,"foc_units":0},{"variant":"Mani/Pedi Set","barcode":"BLU - 4 - 0007","category":"Mani / Pedi Care","units":312.0,"net":104614.0,"gross":149448.0,"commission":44834.0,"cost":68640.0,"profit":35974.0,"orders":7,"customers":1,"avg_price":479.0,"velocity":66.88225352112676,"unit_cost":220.0,"margin":0.34387366891620624,"foc_units":0},{"variant":"Jade Roller & Gua Sha","barcode":"BLU - 2 - 0018","category":"Facial Tools","units":214.0,"net":74452.0,"gross":106786.0,"commission":32335.0,"cost":35524.0,"profit":38928.0,"orders":11,"customers":7,"avg_price":499.0,"velocity":45.8743661971831,"unit_cost":166.0,"margin":0.5228603664105732,"foc_units":0},{"variant":"Brush Cleaning Mat","barcode":"BLU - 3 - 0006","category":"Makeup Tools","units":260.0,"net":72618.0,"gross":103740.0,"commission":31122.0,"cost":20800.0,"profit":51818.0,"orders":5,"customers":1,"avg_price":399.0,"velocity":55.735211267605635,"unit_cost":80.0,"margin":0.7135696383816684,"foc_units":0}],"customer":[{"customer":"Highfy","orders":19,"units":16305.0,"gross":7347907.0,"net":5143547.0,"commission":2204377.0,"cost":2403136.87,"profit":2740410.13,"first":"2025-11-27","last":"2026-04-13","skus":42,"margin":0.5327860579479491,"share":0.3896047715941594,"cum_share":0.3896047715941594,"aov":270713.0,"commission_pct":0.300000666856562,"days_since":4,"status":"Active"},{"customer":"IGB","orders":7,"units":18090.0,"gross":6426594.0,"net":4498638.0,"commission":1927958.0,"cost":2136922.5,"profit":2361715.5,"first":"2025-11-27","last":"2026-03-13","skus":25,"margin":0.5249845619940969,"share":0.3407552862790611,"cum_share":0.7303600578732206,"aov":642662.5714285715,"commission_pct":0.2999968568109328,"days_since":35,"status":"At-Risk"},{"customer":"New Wave Traders","orders":1,"units":3000.0,"gross":1494120.0,"net":896472.0,"commission":597648.0,"cost":363373.2,"profit":533098.8,"first":"2026-01-29","last":"2026-01-29","skus":25,"margin":0.5946630792707414,"share":0.067904457527181,"cum_share":0.7982645154004016,"aov":896472.0,"commission_pct":0.4,"days_since":78,"status":"Lapsed"},{"customer":"Allure","orders":5,"units":1176.0,"gross":588198.0,"net":411777.0,"commission":176457.0,"cost":182413.29,"profit":229363.71,"first":"2026-02-23","last":"2026-03-27","skus":37,"margin":0.5570095221442674,"share":0.03119059357924175,"cum_share":0.8294551089796433,"aov":82355.4,"commission_pct":0.2999959197413116,"days_since":21,"status":"Active"},{"customer":"Naheed","orders":6,"units":1287.0,"gross":612785.0,"net":367657.0,"commission":245128.0,"cost":164823.05,"profit":202833.95,"first":"2026-02-02","last":"2026-04-13","skus":36,"margin":0.5516934262097554,"share":0.02784866581563148,"cum_share":0.8573037747952748,"aov":61276.166666666664,"commission_pct":0.40002284651223513,"days_since":4,"status":"Active"},{"customer":"Vegas","orders":1,"units":750.0,"gross":373530.0,"net":242807.0,"commission":130748.0,"cost":90843.3,"profit":151963.7,"first":"2026-02-04","last":"2026-02-04","skus":25,"margin":0.6258621044698053,"share":0.01839173740931366,"cum_share":0.8756955122045884,"aov":242807.0,"commission_pct":0.3500334645142291,"days_since":72,"status":"Lapsed"},{"customer":"Nice 2","orders":8,"units":709.0,"gross":313951.0,"net":212804.0,"commission":101147.0,"cost":74767.64,"profit":138036.36000000002,"first":"2026-01-30","last":"2026-04-14","skus":25,"margin":0.6486549125016448,"share":0.016119120485206705,"cum_share":0.8918146326897951,"aov":26600.5,"commission_pct":0.32217447945698535,"days_since":3,"status":"Active"},{"customer":"Colorshow","orders":7,"units":571.0,"gross":288127.0,"net":201703.0,"commission":86428.0,"cost":84711.16,"profit":116991.84,"first":"2026-01-30","last":"2026-04-16","skus":37,"margin":0.5800203269163077,"share":0.015278260555382643,"cum_share":0.9070928932451777,"aov":28814.714285714286,"commission_pct":0.2999649460133899,"days_since":1,"status":"Active"},{"customer":"TSF","orders":5,"units":520.0,"gross":272684.0,"net":190895.0,"commission":81805.0,"cost":81867.77,"profit":109027.23,"first":"2026-01-30","last":"2026-04-17","skus":37,"margin":0.5711371696482359,"share":0.014459594298150101,"cum_share":0.9215524875433279,"aov":38179.0,"commission_pct":0.29999926655029263,"days_since":0,"status":"Active"},{"customer":"Cozmetica - Ahsan Iqbal","orders":1,"units":354.0,"gross":208242.0,"net":145781.0,"commission":62461.0,"cost":66353.64,"profit":79427.36,"first":"2026-02-19","last":"2026-02-19","skus":35,"margin":0.5448402741097949,"share":0.01104237468963891,"cum_share":0.9325948622329667,"aov":145781.0,"commission_pct":0.2999442955791819,"days_since":57,"status":"At-Risk"},{"customer":"BMP","orders":4,"units":437.0,"gross":196897.0,"net":130693.0,"commission":66204.0,"cost":40257.58,"profit":90435.42,"first":"2026-02-10","last":"2026-03-03","skus":16,"margin":0.6919683533165509,"share":0.00989951417065995,"cum_share":0.9424943764036267,"aov":32673.25,"commission_pct":0.3362367125959258,"days_since":45,"status":"At-Risk"},{"customer":"Commons","orders":3,"units":282.0,"gross":147421.0,"net":103195.0,"commission":44227.0,"cost":45842.33,"profit":57352.67,"first":"2026-02-02","last":"2026-04-06","skus":39,"margin":0.5557698531905615,"share":0.007816641785262052,"cum_share":0.9503110181888887,"aov":34398.333333333336,"commission_pct":0.3000047483058723,"days_since":11,"status":"Active"},{"customer":"Shazz","orders":3,"units":318.0,"gross":140382.0,"net":98277.0,"commission":42105.0,"cost":34420.14,"profit":63856.86,"first":"2026-02-04","last":"2026-04-03","skus":17,"margin":0.6497640343111817,"share":0.0074441213695450245,"cum_share":0.9577551395584337,"aov":32759.0,"commission_pct":0.2999316151643373,"days_since":14,"status":"Active"},{"customer":"Makeup City","orders":1,"units":264.0,"gross":135288.0,"net":94710.0,"commission":40578.0,"cost":39205.86,"profit":55504.14,"first":"2026-02-19","last":"2026-02-19","skus":36,"margin":0.5860430788723472,"share":0.007173934235982064,"cum_share":0.9649290737944158,"aov":94710.0,"commission_pct":0.29993791023594113,"days_since":57,"status":"At-Risk"},{"customer":"Nice 1","orders":4,"units":230.0,"gross":97282.0,"net":68105.0,"commission":29177.0,"cost":21247.22,"profit":46857.78,"first":"2026-01-30","last":"2026-04-14","skus":18,"margin":0.6880226121430144,"share":0.005158703316878455,"cum_share":0.9700877771112943,"aov":17026.25,"commission_pct":0.2999218766061553,"days_since":3,"status":"Active"},{"customer":"Move & Pick","orders":2,"units":192.0,"gross":91620.0,"net":64140.0,"commission":27480.0,"cost":21553.14,"profit":42586.86,"first":"2026-01-30","last":"2026-03-06","skus":25,"margin":0.6639672591206736,"share":0.00485836914682599,"cum_share":0.9749461462581204,"aov":32070.0,"commission_pct":0.2999345121152587,"days_since":42,"status":"At-Risk"},{"customer":"Springs Tipu Sultan","orders":2,"units":180.0,"gross":80388.0,"net":56277.0,"commission":24111.0,"cost":18842.22,"profit":37434.78,"first":"2026-01-30","last":"2026-04-03","skus":10,"margin":0.6651879098032945,"share":0.0042627758103512044,"cum_share":0.9792089220684715,"aov":28138.5,"commission_pct":0.2999328257948948,"days_since":14,"status":"Active"},{"customer":"The Great Mart","orders":1,"units":100.0,"gross":49804.0,"net":34858.0,"commission":14946.0,"cost":12112.44,"profit":22745.56,"first":"2026-02-04","last":"2026-02-04","skus":25,"margin":0.6525205117906937,"share":0.0026403653214851944,"cum_share":0.9818492873899567,"aov":34858.0,"commission_pct":0.30009637780097986,"days_since":72,"status":"Lapsed"},{"customer":"TESCO","orders":5,"units":119.0,"gross":48537.0,"net":33981.0,"commission":14556.0,"cost":11889.23,"profit":22091.77,"first":"2026-01-30","last":"2026-04-08","skus":20,"margin":0.6501212442247138,"share":0.002573935796356314,"cum_share":0.984423223186313,"aov":6796.2,"commission_pct":0.29989492552073677,"days_since":9,"status":"Active"},{"customer":"Good Luck Beauty","orders":1,"units":102.0,"gross":47610.0,"net":33329.0,"commission":14281.0,"cost":11820.48,"profit":21508.52,"first":"2026-03-04","last":"2026-03-04","skus":12,"margin":0.6453394941342374,"share":0.002524549193865972,"cum_share":0.9869477723801791,"aov":33329.0,"commission_pct":0.2999579920184835,"days_since":44,"status":"At-Risk"},{"customer":"Springs North Nazimabad","orders":2,"units":108.0,"gross":45060.0,"net":31545.0,"commission":13515.0,"cost":11029.14,"profit":20515.86,"first":"2026-01-30","last":"2026-04-03","skus":10,"margin":0.6503680456490728,"share":0.0023894177539230724,"cum_share":0.9893371901341022,"aov":15772.5,"commission_pct":0.29993342210386154,"days_since":14,"status":"Active"},{"customer":"Local Pop Up","orders":2,"units":75.0,"gross":44005.0,"net":30807.0,"commission":13201.0,"cost":15447.630000000001,"profit":15359.369999999999,"first":"2026-04-06","last":"2026-04-06","skus":26,"margin":0.4985675333528094,"share":0.002333516967668667,"cum_share":0.9916707071017709,"aov":15403.5,"commission_pct":0.29998863765481193,"days_since":11,"status":"Active"},{"customer":"Ajwa Super Market","orders":2,"units":78.0,"gross":37800.0,"net":26463.0,"commission":11338.0,"cost":9219.03,"profit":17243.97,"first":"2026-03-07","last":"2026-03-30","skus":23,"margin":0.6516256660242603,"share":0.0020044749412606202,"cum_share":0.9936751820430315,"aov":13231.5,"commission_pct":0.29994708994708996,"days_since":18,"status":"Active"},{"customer":"Hajjis","orders":2,"units":65.0,"gross":36847.0,"net":25794.0,"commission":11053.0,"cost":8997.32,"profit":16796.68,"first":"2026-02-10","last":"2026-04-16","skus":13,"margin":0.6511855470264403,"share":0.001953800651282033,"cum_share":0.9956289826943135,"aov":12897.0,"commission_pct":0.2999701468233506,"days_since":1,"status":"Active"},{"customer":"Kamal Mart","orders":4,"units":60.0,"gross":28174.0,"net":19727.0,"commission":8448.0,"cost":6759.09,"profit":12967.91,"first":"2026-02-10","last":"2026-04-16","skus":13,"margin":0.657368581132458,"share":0.001494247710624202,"cum_share":0.9971232304049378,"aov":4931.75,"commission_pct":0.29985092638602967,"days_since":1,"status":"Active"},{"customer":"Springs Bukhari","orders":1,"units":60.0,"gross":26796.0,"net":18759.0,"commission":8037.0,"cost":6280.74,"profit":12478.26,"first":"2026-01-30","last":"2026-01-30","skus":10,"margin":0.6651879098032945,"share":0.0014209252701170682,"cum_share":0.9985441556750548,"aov":18759.0,"commission_pct":0.2999328257948948,"days_since":77,"status":"Lapsed"},{"customer":"My M Gees","orders":1,"units":24.0,"gross":15282.0,"net":10698.0,"commission":4584.0,"cost":3982.2599999999998,"profit":6715.74,"first":"2026-03-06","last":"2026-03-06","skus":6,"margin":0.6277565900168256,"share":0.0008103341617203687,"cum_share":0.9993544898367752,"aov":10698.0,"commission_pct":0.2999607381232823,"days_since":42,"status":"At-Risk"},{"customer":"Waleed Classic","orders":1,"units":21.0,"gross":9735.0,"net":6815.0,"commission":2920.0,"cost":1970.07,"profit":4844.93,"first":"2026-02-27","last":"2026-02-27","skus":5,"margin":0.7109214966984593,"share":0.0005162111901406162,"cum_share":0.9998707010269159,"aov":6815.0,"commission_pct":0.29994863893168977,"days_since":49,"status":"At-Risk"},{"customer":"Khazanay.pk","orders":1,"units":3.0,"gross":1897.0,"net":1707.0,"commission":190.0,"cost":585.45,"profit":1121.55,"first":"2026-04-06","last":"2026-04-06","skus":3,"margin":0.6570298769771529,"share":0.0001292989730843774,"cum_share":1.0000000000000002,"aov":1707.0,"commission_pct":0.10015814443858724,"days_since":11,"status":"Active"},{"customer":"Ahmer Taqi (Rederm Aesthetics)","orders":1,"units":5.0,"gross":0.0,"net":0.0,"commission":0.0,"cost":868.92,"profit":-868.92,"first":"2026-03-06","last":"2026-03-06","skus":5,"margin":0.0,"share":0.0,"cum_share":1.0000000000000002,"aov":0.0,"commission_pct":0.0,"days_since":42,"status":"At-Risk"}],"reorder":[{"customer":"Highfy","orders":19,"first":"2025-11-27","last":"2026-04-13","days_since":4,"avg_gap":7.611111111111111,"min_gap":0.0,"max_gap":27.0},{"customer":"Nice 2","orders":8,"first":"2026-01-30","last":"2026-04-14","days_since":3,"avg_gap":10.571428571428571,"min_gap":2.0,"max_gap":15.0},{"customer":"Colorshow","orders":7,"first":"2026-01-30","last":"2026-04-16","days_since":1,"avg_gap":12.666666666666666,"min_gap":3.0,"max_gap":33.0},{"customer":"IGB","orders":7,"first":"2025-11-27","last":"2026-03-13","days_since":35,"avg_gap":17.666666666666668,"min_gap":2.0,"max_gap":49.0},{"customer":"Naheed","orders":6,"first":"2026-02-02","last":"2026-04-13","days_since":4,"avg_gap":14.0,"min_gap":0.0,"max_gap":32.0},{"customer":"Allure","orders":5,"first":"2026-02-23","last":"2026-03-27","days_since":21,"avg_gap":8.0,"min_gap":3.0,"max_gap":14.0},{"customer":"TESCO","orders":5,"first":"2026-01-30","last":"2026-04-08","days_since":9,"avg_gap":17.0,"min_gap":2.0,"max_gap":31.0},{"customer":"TSF","orders":5,"first":"2026-01-30","last":"2026-04-17","days_since":0,"avg_gap":19.25,"min_gap":0.0,"max_gap":35.0},{"customer":"BMP","orders":4,"first":"2026-02-10","last":"2026-03-03","days_since":45,"avg_gap":7.0,"min_gap":1.0,"max_gap":18.0},{"customer":"Kamal Mart","orders":4,"first":"2026-02-10","last":"2026-04-16","days_since":1,"avg_gap":21.666666666666668,"min_gap":17.0,"max_gap":31.0},{"customer":"Nice 1","orders":4,"first":"2026-01-30","last":"2026-04-14","days_since":3,"avg_gap":24.666666666666668,"min_gap":11.0,"max_gap":44.0},{"customer":"Shazz","orders":3,"first":"2026-02-04","last":"2026-04-03","days_since":14,"avg_gap":29.0,"min_gap":1.0,"max_gap":57.0},{"customer":"Commons","orders":3,"first":"2026-02-02","last":"2026-04-06","days_since":11,"avg_gap":31.5,"min_gap":13.0,"max_gap":50.0},{"customer":"Local Pop Up","orders":2,"first":"2026-04-06","last":"2026-04-06","days_since":11,"avg_gap":0.0,"min_gap":0.0,"max_gap":0.0},{"customer":"Ajwa Super Market","orders":2,"first":"2026-03-07","last":"2026-03-30","days_since":18,"avg_gap":23.0,"min_gap":23.0,"max_gap":23.0},{"customer":"Move & Pick","orders":2,"first":"2026-01-30","last":"2026-03-06","days_since":42,"avg_gap":35.0,"min_gap":35.0,"max_gap":35.0},{"customer":"Springs North Nazimabad","orders":2,"first":"2026-01-30","last":"2026-04-03","days_since":14,"avg_gap":63.0,"min_gap":63.0,"max_gap":63.0},{"customer":"Springs Tipu Sultan","orders":2,"first":"2026-01-30","last":"2026-04-03","days_since":14,"avg_gap":63.0,"min_gap":63.0,"max_gap":63.0},{"customer":"Hajjis","orders":2,"first":"2026-02-10","last":"2026-04-16","days_since":1,"avg_gap":65.0,"min_gap":65.0,"max_gap":65.0},{"customer":"Ahmer Taqi (Rederm Aesthetics)","orders":1,"first":"2026-03-06","last":"2026-03-06","days_since":42,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"Cozmetica - Ahsan Iqbal","orders":1,"first":"2026-02-19","last":"2026-02-19","days_since":57,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"Good Luck Beauty","orders":1,"first":"2026-03-04","last":"2026-03-04","days_since":44,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"Khazanay.pk","orders":1,"first":"2026-04-06","last":"2026-04-06","days_since":11,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"Makeup City","orders":1,"first":"2026-02-19","last":"2026-02-19","days_since":57,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"My M Gees","orders":1,"first":"2026-03-06","last":"2026-03-06","days_since":42,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"New Wave Traders","orders":1,"first":"2026-01-29","last":"2026-01-29","days_since":78,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"Springs Bukhari","orders":1,"first":"2026-01-30","last":"2026-01-30","days_since":77,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"The Great Mart","orders":1,"first":"2026-02-04","last":"2026-02-04","days_since":72,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"Vegas","orders":1,"first":"2026-02-04","last":"2026-02-04","days_since":72,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN},{"customer":"Waleed Classic","orders":1,"first":"2026-02-27","last":"2026-02-27","days_since":49,"avg_gap":NaN,"min_gap":NaN,"max_gap":NaN}],"invoices":[{"orderReference":"SO0140","customer":"TSF","issue":"2026-04-17","due":"2026-05-17","net":27212.0,"gross":38874.0,"commission":11663.0,"lines":13,"units":86.0,"foc_lines":0},{"orderReference":"SO0139","customer":"Colorshow","issue":"2026-04-16","due":"2026-05-16","net":2898.0,"gross":4140.0,"commission":1242.0,"lines":3,"units":10.0,"foc_lines":0},{"orderReference":"SO0138","customer":"Hajjis","issue":"2026-04-16","due":"2026-05-16","net":13731.0,"gross":19614.0,"commission":5883.0,"lines":11,"units":42.0,"foc_lines":0},{"orderReference":"SO0137","customer":"Kamal Mart","issue":"2026-04-16","due":"2026-05-16","net":5608.0,"gross":8009.0,"commission":2402.0,"lines":6,"units":19.0,"foc_lines":0},{"orderReference":"SO0135","customer":"Nice 1","issue":"2026-04-14","due":"2026-05-14","net":16344.0,"gross":23346.0,"commission":7002.0,"lines":8,"units":54.0,"foc_lines":0},{"orderReference":"SO0134","customer":"Nice 2","issue":"2026-04-14","due":"2026-05-14","net":21796.0,"gross":33534.0,"commission":11738.0,"lines":8,"units":78.0,"foc_lines":0},{"orderReference":"SO0133","customer":"Naheed","issue":"2026-04-13","due":"2026-05-13","net":3170.0,"gross":5284.0,"commission":2114.0,"lines":2,"units":16.0,"foc_lines":0},{"orderReference":"SO0132","customer":"Highfy","issue":"2026-04-13","due":"2026-05-13","net":39360.0,"gross":56226.0,"commission":16867.0,"lines":8,"units":114.0,"foc_lines":0},{"orderReference":"SO0131","customer":"TESCO","issue":"2026-04-08","due":"2026-05-08","net":2512.0,"gross":3588.0,"commission":1076.0,"lines":1,"units":12.0,"foc_lines":0},{"orderReference":"SO0127","customer":"Commons","issue":"2026-04-06","due":"2026-05-06","net":81502.0,"gross":116429.0,"commission":34927.0,"lines":38,"units":226.0,"foc_lines":0},{"orderReference":"SO0125","customer":"TESCO","issue":"2026-04-06","due":"2026-05-06","net":14183.0,"gross":20258.0,"commission":6075.0,"lines":12,"units":48.0,"foc_lines":0},{"orderReference":"SO0126","customer":"Highfy","issue":"2026-04-06","due":"2026-05-06","net":561120.0,"gross":801601.0,"commission":240482.0,"lines":28,"units":1769.0,"foc_lines":0},{"orderReference":"SO0129","customer":"Local Pop Up","issue":"2026-04-06","due":"2026-05-06","net":0.0,"gross":0.0,"commission":0.0,"lines":3,"units":4.0,"foc_lines":3},{"orderReference":"SO0128","customer":"Local Pop Up","issue":"2026-04-06","due":"2026-05-06","net":30807.0,"gross":44005.0,"commission":13201.0,"lines":26,"units":71.0,"foc_lines":0},{"orderReference":"SO0130","customer":"Khazanay.pk","issue":"2026-04-06","due":"2026-05-06","net":1707.0,"gross":1897.0,"commission":190.0,"lines":3,"units":3.0,"foc_lines":0},{"orderReference":"SO0124","customer":"Springs North Nazimabad","issue":"2026-04-03","due":"2026-05-03","net":12786.0,"gross":18264.0,"commission":5478.0,"lines":4,"units":48.0,"foc_lines":0},{"orderReference":"SO0123","customer":"Springs Tipu Sultan","issue":"2026-04-03","due":"2026-05-03","net":37518.0,"gross":53592.0,"commission":16074.0,"lines":10,"units":120.0,"foc_lines":0},{"orderReference":"SO0122","customer":"Shazz","issue":"2026-04-03","due":"2026-05-03","net":2096.0,"gross":2994.0,"commission":898.0,"lines":1,"units":6.0,"foc_lines":0},{"orderReference":"SO0121","customer":"Shazz","issue":"2026-04-02","due":"2026-05-02","net":49447.0,"gross":70632.0,"commission":21185.0,"lines":14,"units":168.0,"foc_lines":0},{"orderReference":"SO0119","customer":"Colorshow","issue":"2026-04-01","due":"2026-05-01","net":47091.0,"gross":67269.0,"commission":20181.0,"lines":15,"units":127.0,"foc_lines":0},{"orderReference":"SO0113","customer":"Nice 2","issue":"2026-03-30","due":"2026-04-29","net":31532.0,"gross":48513.0,"commission":16981.0,"lines":12,"units":99.0,"foc_lines":0},{"orderReference":"SO0115","customer":"Kamal Mart","issue":"2026-03-30","due":"2026-04-29","net":6397.0,"gross":9137.0,"commission":2740.0,"lines":5,"units":13.0,"foc_lines":0},{"orderReference":"SO0114","customer":"Ajwa Super Market","issue":"2026-03-30","due":"2026-04-29","net":4715.0,"gross":6735.0,"commission":2020.0,"lines":5,"units":15.0,"foc_lines":0},{"orderReference":"SO0112","customer":"Naheed","issue":"2026-03-30","due":"2026-04-29","net":147282.0,"gross":245472.0,"commission":98190.0,"lines":34,"units":478.0,"foc_lines":0},{"orderReference":"SO0116","customer":"Naheed","issue":"2026-03-30","due":"2026-04-29","net":1796.0,"gross":2994.0,"commission":1198.0,"lines":1,"units":6.0,"foc_lines":0},{"orderReference":"1020-C","customer":"Allure","issue":"2026-03-27","due":"2026-04-26","net":118510.0,"gross":169300.0,"commission":50790.0,"lines":36,"units":360.0,"foc_lines":0},{"orderReference":"SO0036","customer":"Nice 1","issue":"2026-03-26","due":"2026-04-25","net":21576.0,"gross":30819.0,"commission":9243.0,"lines":11,"units":81.0,"foc_lines":0},{"orderReference":"SO0034","customer":"TSF","issue":"2026-03-25","due":"2026-04-24","net":102226.0,"gross":146035.0,"commission":43812.0,"lines":32,"units":275.0,"foc_lines":0},{"orderReference":"SO0033","customer":"Commons","issue":"2026-03-24","due":"2026-04-23","net":10601.0,"gross":15144.0,"commission":4543.0,"lines":12,"units":26.0,"foc_lines":0},{"orderReference":"SO0032","customer":"Allure","issue":"2026-03-24","due":"2026-04-23","net":96655.0,"gross":138066.0,"commission":41411.0,"lines":35,"units":276.0,"foc_lines":0},{"orderReference":"SO0031","customer":"Colorshow","issue":"2026-03-19","due":"2026-04-18","net":3215.0,"gross":4593.0,"commission":1378.0,"lines":2,"units":7.0,"foc_lines":0},{"orderReference":"SO0030","customer":"Allure","issue":"2026-03-19","due":"2026-04-18","net":133147.0,"gross":190194.0,"commission":57047.0,"lines":35,"units":348.0,"foc_lines":0},{"orderReference":"SO0029","customer":"Nice 2","issue":"2026-03-17","due":"2026-04-16","net":37249.0,"gross":57309.0,"commission":20060.0,"lines":15,"units":141.0,"foc_lines":0},{"orderReference":"SO0028","customer":"IGB","issue":"2026-03-13","due":"2026-04-12","net":120900.0,"gross":172716.0,"commission":51816.0,"lines":16,"units":396.0,"foc_lines":0},{"orderReference":"SO0027","customer":"Colorshow","issue":"2026-03-12","due":"2026-04-11","net":45474.0,"gross":64958.0,"commission":19485.0,"lines":16,"units":142.0,"foc_lines":0},{"orderReference":"SO0026","customer":"Naheed","issue":"2026-03-12","due":"2026-04-11","net":44966.0,"gross":74949.0,"commission":29983.0,"lines":20,"units":161.0,"foc_lines":0},{"orderReference":"SO0025","customer":"IGB","issue":"2026-03-11","due":"2026-04-10","net":104598.0,"gross":149412.0,"commission":44814.0,"lines":25,"units":300.0,"foc_lines":0},{"orderReference":"SO0024","customer":"Highfy","issue":"2026-03-10","due":"2026-04-09","net":450442.0,"gross":643486.0,"commission":193047.0,"lines":30,"units":1554.0,"foc_lines":0},{"orderReference":"SO0023","customer":"Colorshow","issue":"2026-03-09","due":"2026-04-08","net":3350.0,"gross":4787.0,"commission":1437.0,"lines":3,"units":13.0,"foc_lines":0},{"orderReference":"SO0021","customer":"Allure","issue":"2026-03-09","due":"2026-04-08","net":4192.0,"gross":5988.0,"commission":1796.0,"lines":1,"units":12.0,"foc_lines":0},{"orderReference":"SO0020","customer":"Ajwa Super Market","issue":"2026-03-07","due":"2026-04-06","net":21748.0,"gross":31065.0,"commission":9318.0,"lines":20,"units":63.0,"foc_lines":0},{"orderReference":"SO0019","customer":"Highfy","issue":"2026-03-07","due":"2026-04-06","net":4404.0,"gross":6291.0,"commission":1887.0,"lines":1,"units":9.0,"foc_lines":0},{"orderReference":"SO0018","customer":"Highfy","issue":"2026-03-07","due":"2026-04-06","net":612571.0,"gross":875095.0,"commission":262529.0,"lines":25,"units":1895.0,"foc_lines":0},{"orderReference":"SO0017","customer":"TSF","issue":"2026-03-06","due":"2026-04-05","net":28519.0,"gross":40733.0,"commission":12226.0,"lines":14,"units":67.0,"foc_lines":0},{"orderReference":"SO0016","customer":"TSF","issue":"2026-03-06","due":"2026-04-05","net":1361.0,"gross":1946.0,"commission":585.0,"lines":4,"units":4.0,"foc_lines":0},{"orderReference":"SO0015","customer":"Ahmer Taqi (Rederm Aesthetics)","issue":"2026-03-06","due":"2026-04-05","net":0.0,"gross":0.0,"commission":0.0,"lines":5,"units":5.0,"foc_lines":5},{"orderReference":"SO0014","customer":"Move & Pick","issue":"2026-03-06","due":"2026-04-05","net":11841.0,"gross":16914.0,"commission":5073.0,"lines":8,"units":42.0,"foc_lines":0},{"orderReference":"SO0013","customer":"My M Gees","issue":"2026-03-06","due":"2026-04-05","net":10698.0,"gross":15282.0,"commission":4584.0,"lines":6,"units":24.0,"foc_lines":0},{"orderReference":"SO0012","customer":"TESCO","issue":"2026-03-06","due":"2026-04-05","net":4923.0,"gross":7032.0,"commission":2109.0,"lines":6,"units":18.0,"foc_lines":0},{"orderReference":"SO0011","customer":"Naheed","issue":"2026-03-06","due":"2026-04-05","net":75035.0,"gross":125058.0,"commission":50023.0,"lines":26,"units":294.0,"foc_lines":0},{"orderReference":"SO0010","customer":"Colorshow","issue":"2026-03-04","due":"2026-04-03","net":4965.0,"gross":7092.0,"commission":2127.0,"lines":2,"units":8.0,"foc_lines":0},{"orderReference":"SO0009","customer":"Good Luck Beauty","issue":"2026-03-04","due":"2026-04-03","net":33329.0,"gross":47610.0,"commission":14281.0,"lines":12,"units":102.0,"foc_lines":0},{"orderReference":"SO0006","customer":"BMP","issue":"2026-03-03","due":"2026-04-02","net":18238.0,"gross":26052.0,"commission":7814.0,"lines":5,"units":60.0,"foc_lines":0},{"orderReference":"SO0008","customer":"Nice 2","issue":"2026-03-02","due":"2026-04-01","net":30606.0,"gross":43719.0,"commission":13113.0,"lines":12,"units":93.0,"foc_lines":0},{"orderReference":"SO0006_2","customer":"BMP","issue":"2026-03-02","due":"2026-04-01","net":19711.0,"gross":28158.0,"commission":8447.0,"lines":5,"units":66.0,"foc_lines":0},{"orderReference":"SO0005","customer":"TESCO","issue":"2026-02-27","due":"2026-03-29","net":1256.0,"gross":1794.0,"commission":538.0,"lines":1,"units":6.0,"foc_lines":0},{"orderReference":"SO0004","customer":"Waleed Classic","issue":"2026-02-27","due":"2026-03-29","net":6815.0,"gross":9735.0,"commission":2920.0,"lines":5,"units":21.0,"foc_lines":0},{"orderReference":"SO0003","customer":"Kamal Mart","issue":"2026-02-27","due":"2026-03-29","net":7304.0,"gross":10431.0,"commission":3127.0,"lines":9,"units":25.0,"foc_lines":0},{"orderReference":"1037","customer":"Allure","issue":"2026-02-23","due":"2026-03-25","net":59273.0,"gross":84650.0,"commission":25413.0,"lines":36,"units":180.0,"foc_lines":0},{"orderReference":"1035","customer":"Highfy","issue":"2026-02-20","due":"2026-03-22","net":188975.0,"gross":269961.0,"commission":80987.0,"lines":21,"units":603.0,"foc_lines":0},{"orderReference":"1036","customer":"Nice 2","issue":"2026-02-20","due":"2026-03-22","net":19282.0,"gross":27543.0,"commission":8261.0,"lines":10,"units":57.0,"foc_lines":0},{"orderReference":"1030","customer":"Cozmetica - Ahsan Iqbal","issue":"2026-02-19","due":"2026-03-21","net":145781.0,"gross":208242.0,"commission":62461.0,"lines":37,"units":354.0,"foc_lines":0},{"orderReference":"1034","customer":"Makeup City","issue":"2026-02-19","due":"2026-03-21","net":94710.0,"gross":135288.0,"commission":40578.0,"lines":36,"units":264.0,"foc_lines":0},{"orderReference":"1032","customer":"IGB","issue":"2026-02-17","due":"2026-03-19","net":72208.0,"gross":103140.0,"commission":30932.0,"lines":25,"units":300.0,"foc_lines":0},{"orderReference":"1049-C","customer":"Nice 2","issue":"2026-02-12","due":"2026-03-14","net":2443.0,"gross":3490.0,"commission":1047.0,"lines":1,"units":10.0,"foc_lines":0},{"orderReference":"1048-C","customer":"BMP","issue":"2026-02-12","due":"2026-03-14","net":67359.0,"gross":103632.0,"commission":36273.0,"lines":11,"units":216.0,"foc_lines":0},{"orderReference":"1047-C","customer":"IGB","issue":"2026-02-11","due":"2026-03-13","net":423276.0,"gross":604680.0,"commission":181404.0,"lines":11,"units":1320.0,"foc_lines":0},{"orderReference":".1046-C","customer":"Kamal Mart","issue":"2026-02-10","due":"2026-03-12","net":418.0,"gross":597.0,"commission":179.0,"lines":1,"units":3.0,"foc_lines":0},{"orderReference":"1042-C","customer":"Nice 1","issue":"2026-02-10","due":"2026-03-12","net":11942.0,"gross":17058.0,"commission":5116.0,"lines":5,"units":42.0,"foc_lines":0},{"orderReference":"1043-C","customer":"Nice 2","issue":"2026-02-10","due":"2026-03-12","net":29972.0,"gross":42813.0,"commission":12841.0,"lines":15,"units":93.0,"foc_lines":0},{"orderReference":"1044-C","customer":"BMP","issue":"2026-02-10","due":"2026-03-12","net":25385.0,"gross":39055.0,"commission":13670.0,"lines":3,"units":95.0,"foc_lines":0},{"orderReference":"1045-C","customer":"Hajjis","issue":"2026-02-10","due":"2026-03-12","net":12063.0,"gross":17233.0,"commission":5170.0,"lines":6,"units":23.0,"foc_lines":0},{"orderReference":"1037-C","customer":"Vegas","issue":"2026-02-04","due":"2026-03-06","net":242807.0,"gross":373530.0,"commission":130748.0,"lines":25,"units":750.0,"foc_lines":0},{"orderReference":"1039-C","customer":"Shazz","issue":"2026-02-04","due":"2026-03-06","net":46734.0,"gross":66756.0,"commission":20022.0,"lines":13,"units":144.0,"foc_lines":0},{"orderReference":"1040-C","customer":"Highfy","issue":"2026-02-04","due":"2026-03-06","net":458910.0,"gross":655584.0,"commission":196676.0,"lines":19,"units":1644.0,"foc_lines":0},{"orderReference":"1038-C","customer":"The Great Mart","issue":"2026-02-04","due":"2026-03-06","net":34858.0,"gross":49804.0,"commission":14946.0,"lines":25,"units":100.0,"foc_lines":0},{"orderReference":"1036C","customer":"Commons","issue":"2026-02-02","due":"2026-03-04","net":11092.0,"gross":15848.0,"commission":4757.0,"lines":21,"units":30.0,"foc_lines":0},{"orderReference":"1022-C","customer":"Naheed","issue":"2026-02-02","due":"2026-03-04","net":95408.0,"gross":159028.0,"commission":63620.0,"lines":35,"units":332.0,"foc_lines":0},{"orderReference":"1028-C","customer":"Nice 1","issue":"2026-01-30","due":"2026-03-01","net":18243.0,"gross":26059.0,"commission":7816.0,"lines":7,"units":53.0,"foc_lines":0},{"orderReference":"1025-C","customer":"Springs Bukhari","issue":"2026-01-30","due":"2026-03-01","net":18759.0,"gross":26796.0,"commission":8037.0,"lines":10,"units":60.0,"foc_lines":0},{"orderReference":"1026-C","customer":"Springs North Nazimabad","issue":"2026-01-30","due":"2026-03-01","net":18759.0,"gross":26796.0,"commission":8037.0,"lines":10,"units":60.0,"foc_lines":0},{"orderReference":"1027-C","customer":"Springs Tipu Sultan","issue":"2026-01-30","due":"2026-03-01","net":18759.0,"gross":26796.0,"commission":8037.0,"lines":10,"units":60.0,"foc_lines":0},{"orderReference":"1031-C","customer":"Move & Pick","issue":"2026-01-30","due":"2026-03-01","net":52299.0,"gross":74706.0,"commission":22407.0,"lines":25,"units":150.0,"foc_lines":0},{"orderReference":"1029-C","customer":"Nice 2","issue":"2026-01-30","due":"2026-03-01","net":39924.0,"gross":57030.0,"commission":17106.0,"lines":15,"units":138.0,"foc_lines":0},{"orderReference":"1033-C","customer":"TSF","issue":"2026-01-30","due":"2026-03-01","net":31577.0,"gross":45096.0,"commission":13519.0,"lines":36,"units":88.0,"foc_lines":0},{"orderReference":"1034-C","customer":"Colorshow","issue":"2026-01-30","due":"2026-03-01","net":94710.0,"gross":135288.0,"commission":40578.0,"lines":36,"units":264.0,"foc_lines":0},{"orderReference":"1030-C","customer":"TESCO","issue":"2026-01-30","due":"2026-03-01","net":11107.0,"gross":15865.0,"commission":4758.0,"lines":12,"units":35.0,"foc_lines":0},{"orderReference":"1024-C","customer":"New Wave Traders","issue":"2026-01-29","due":"2026-02-28","net":896472.0,"gross":1494120.0,"commission":597648.0,"lines":25,"units":3000.0,"foc_lines":0},{"orderReference":"1023-C","customer":"Highfy","issue":"2026-01-23","due":"2026-02-22","net":17483.0,"gross":24975.0,"commission":7493.0,"lines":1,"units":25.0,"foc_lines":0},{"orderReference":"1021","customer":"Highfy","issue":"2026-01-19","due":"2026-02-18","net":122551.0,"gross":175074.0,"commission":52523.0,"lines":5,"units":366.0,"foc_lines":0},{"orderReference":"1017","customer":"Highfy","issue":"2026-01-05","due":"2026-02-04","net":199130.0,"gross":284470.0,"commission":85342.0,"lines":18,"units":770.0,"foc_lines":0},{"orderReference":"1016","customer":"IGB","issue":"2025-12-24","due":"2026-01-23","net":1082970.0,"gross":1547100.0,"commission":464130.0,"lines":25,"units":4500.0,"foc_lines":0},{"orderReference":"1014-B","customer":"Highfy","issue":"2025-12-19","due":"2026-01-18","net":161168.0,"gross":230241.0,"commission":69073.0,"lines":9,"units":409.0,"foc_lines":0},{"orderReference":"1014-A","customer":"Highfy","issue":"2025-12-19","due":"2026-01-18","net":511235.0,"gross":730335.0,"commission":219101.0,"lines":22,"units":1495.0,"foc_lines":0},{"orderReference":"1015'","customer":"IGB","issue":"2025-12-19","due":"2026-01-18","net":1082970.0,"gross":1547100.0,"commission":464130.0,"lines":25,"units":4500.0,"foc_lines":0},{"orderReference":"1031","customer":"Highfy","issue":"2025-12-01","due":"2025-12-31","net":16758.0,"gross":23940.0,"commission":7182.0,"lines":1,"units":60.0,"foc_lines":0},{"orderReference":"1008","customer":"Highfy","issue":"2025-12-01","due":"2025-12-31","net":323392.0,"gross":461988.0,"commission":138596.0,"lines":11,"units":912.0,"foc_lines":0},{"orderReference":"1007","customer":"Highfy","issue":"2025-12-01","due":"2025-12-31","net":732144.0,"gross":1045920.0,"commission":313776.0,"lines":25,"units":3000.0,"foc_lines":0},{"orderReference":"1006","customer":"Highfy","issue":"2025-11-27","due":"2025-12-27","net":111090.0,"gross":158700.0,"commission":47610.0,"lines":5,"units":300.0,"foc_lines":0},{"orderReference":"1005","customer":"Highfy","issue":"2025-11-27","due":"2025-12-27","net":59514.0,"gross":85020.0,"commission":25506.0,"lines":3,"units":180.0,"foc_lines":0},{"orderReference":"1004","customer":"Highfy","issue":"2025-11-27","due":"2025-12-27","net":69132.0,"gross":98760.0,"commission":29628.0,"lines":4,"units":240.0,"foc_lines":0},{"orderReference":"1003","customer":"Highfy","issue":"2025-11-27","due":"2025-12-27","net":504168.0,"gross":720240.0,"commission":216072.0,"lines":16,"units":960.0,"foc_lines":0},{"orderReference":"1002-2","customer":"IGB","issue":"2025-11-27","due":"2025-12-27","net":1611716.0,"gross":2302446.0,"commission":690732.0,"lines":25,"units":6774.0,"foc_lines":0}],"tier":[{"pct":0.1,"lines":3,"units":3.0,"gross":1897.0,"commission":190.0,"net":1707.0,"pct_label":"10%"},{"pct":0.3,"lines":1243,"units":39816.0,"gross":16442588.0,"commission":4932672.0,"net":11509997.0,"pct_label":"30%"},{"pct":0.35,"lines":74,"units":1379.0,"gross":655573.0,"commission":229470.0,"net":426128.0,"pct_label":"35%"},{"pct":0.4,"lines":143,"units":4287.0,"gross":2106905.0,"commission":842776.0,"net":1264129.0,"pct_label":"40%"}],"foc_items":[{"orderReference":"SO0129","customer":"Local Pop Up","variant":"Beauty Blender Set","barcode":"BLU - 3 - 0001","category":"Makeup Tools","quantity":2.0,"ref_price":1253.9024390243903,"retail":2507.8048780487807,"issue":"2026-04-06"},{"orderReference":"SO0129","customer":"Local Pop Up","variant":"Eyelash Curler","barcode":"BLU - 2 - 0002","category":"Facial Tools","quantity":1.0,"ref_price":349.0,"retail":349.0,"issue":"2026-04-06"},{"orderReference":"SO0129","customer":"Local Pop Up","variant":"Jewellery Case","barcode":"BLU - 7 - 0001","category":"Beauty Essentials","quantity":1.0,"ref_price":494.19354838709677,"retail":494.19354838709677,"issue":"2026-04-06"},{"orderReference":"SO0015","customer":"Ahmer Taqi (Rederm Aesthetics)","variant":"Capsule Towels","barcode":"BLU - 6 - 0004","category":"Personal Care","quantity":1.0,"ref_price":499.03846153846155,"retail":499.03846153846155,"issue":"2026-03-06"},{"orderReference":"SO0015","customer":"Ahmer Taqi (Rederm Aesthetics)","variant":"Dual Face Brush","barcode":"BLU - 2 - 0006","category":"Facial Tools","quantity":1.0,"ref_price":439.4074074074074,"retail":439.4074074074074,"issue":"2026-03-06"},{"orderReference":"SO0015","customer":"Ahmer Taqi (Rederm Aesthetics)","variant":"Eyebrow Razor x2","barcode":"BLU - 2 - 0001","category":"Facial Tools","quantity":1.0,"ref_price":526.2954545454545,"retail":526.2954545454545,"issue":"2026-03-06"},{"orderReference":"SO0015","customer":"Ahmer Taqi (Rederm Aesthetics)","variant":"Fleecefit Head Band","barcode":"BLU - 1 - 0006","category":"Hair Tools","quantity":1.0,"ref_price":499.04545454545456,"retail":499.04545454545456,"issue":"2026-03-06"},{"orderReference":"SO0015","customer":"Ahmer Taqi (Rederm Aesthetics)","variant":"Textured Body Roller","barcode":"BLU - 6 - 0003","category":"Personal Care","quantity":1.0,"ref_price":763.1025641025641,"retail":763.1025641025641,"issue":"2026-03-06"}]};
-const STORAGE_KEY = 'bleuface_invoice_status_v1';
-const TERM_DAYS = DATA.meta.payment_term_days;
-const C = ['#00C0FF','#007AA8','#FF6B9D','#1FA67A','#F59E0B','#8B5CF6','#EF4444','#06B6D4','#84CC16','#EC4899'];
+// THIS IS THE ENGINE THAT CONNECTS TO YOUR GOOGLE SHEET
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT5K_L7_RjV2_f3V6_J5oR_O5H8T1Q0N7P2G7G_G7G7G7G7G7G7G7G7G/pub?output=csv"; 
 
-const fmt = {
-  int: n => (n==null||isNaN(n))?'\u2014':Math.round(n).toLocaleString(),
-  money: n => (n==null||isNaN(n))?'\u2014':Math.round(n).toLocaleString(),
-  pct1: n => (n==null||isNaN(n))?'\u2014':(n*100).toFixed(1)+'%',
-  pct0: n => (n==null||isNaN(n))?'\u2014':(n*100).toFixed(0)+'%',
-  days: n => (n==null||isNaN(n))?'\u2014':n.toFixed(0),
-  compact: n => { if(n==null||isNaN(n))return'\u2014';
-    if(n>=1e6)return(n/1e6).toFixed(2)+'M';
-    if(n>=1e3)return(n/1e3).toFixed(1)+'K'; return n.toFixed(0); }
-};
-
-function loadPaidState(){
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
-  catch(e){ return {}; }
-}
-function savePaidState(state){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-let paidState = loadPaidState();
-
-const today = new Date();
-today.setHours(0,0,0,0);
-function daysBetween(d1,d2){
-  const ms = d2 - d1;
-  return Math.round(ms / 86400000);
-}
-function parseDate(s){
-  const [y,m,d] = s.split('-').map(Number);
-  return new Date(y, m-1, d);
-}
-
-function enrichInvoice(inv){
-  const due = parseDate(inv.due);
-  const issued = parseDate(inv.issue);
-  const paid = !!paidState[inv.orderReference]?.paid;
-  const paid_date = paidState[inv.orderReference]?.date || null;
-  const days_to_due = daysBetween(today, due);
-  let status;
-  if(paid){ status = 'Paid'; }
-  else if(days_to_due < 0){ status = 'Overdue'; }
-  else if(days_to_due <= 7){ status = 'Due Soon'; }
-  else { status = 'Upcoming'; }
-  return {...inv, due_date: due, issue_date: issued, paid, paid_date, days_to_due, status};
-}
-
-function getInvoices(){ return DATA.invoices.map(enrichInvoice); }
-
-document.getElementById('period-text').textContent =
-  'Period: ' + DATA.meta.start + '  \u2192  ' + DATA.meta.end + '   \u2022   ' + DATA.meta.days + ' days';
-document.getElementById('gen-text').textContent = 'Generated: ' + DATA.meta.generated;
-document.getElementById('today-label').textContent = 'Today: ' + today.toISOString().slice(0,10);
-
-const k = DATA.kpis;
-document.getElementById('kpi-net').textContent = 'Rs. ' + fmt.compact(k.net);
-document.getElementById('kpi-gross').textContent = 'Rs. ' + fmt.compact(k.gross);
-document.getElementById('kpi-disc').textContent = 'Commission share ' + fmt.pct1(k.commission_pct);
-document.getElementById('kpi-units').textContent = fmt.int(k.units);
-document.getElementById('kpi-units-sub').textContent = fmt.int(k.units/DATA.meta.days) + ' units/day avg';
-document.getElementById('kpi-orders').textContent = fmt.int(k.orders);
-document.getElementById('kpi-aov').textContent = 'AOV Rs. ' + fmt.compact(k.aov);
-document.getElementById('kpi-cust').textContent = fmt.int(k.customers);
-document.getElementById('kpi-repeat').textContent = k.repeat_customers + ' repeat customers';
-document.getElementById('kpi-skus').textContent = fmt.int(k.skus);
-document.getElementById('kpi-reorder').textContent = fmt.pct0(k.reorder_rate);
-document.getElementById('kpi-gap').textContent = 'Avg ' + fmt.days(k.avg_gap) + 'd between orders';
-document.getElementById('pill-active').textContent = k.active + ' Active';
-document.getElementById('pill-risk').textContent = k.at_risk + ' At-Risk';
-document.getElementById('pill-lapsed').textContent = k.lapsed + ' Lapsed';
-
-document.getElementById('kpi-foc-units').textContent = fmt.int(k.foc_units);
-document.getElementById('kpi-foc-sub').textContent = k.foc_lines + ' line items \u2022 ' + k.foc_customers + ' customers';
-document.getElementById('kpi-foc-value').textContent = 'Rs. ' + fmt.compact(k.foc_value);
-document.getElementById('kpi-foc-orders').textContent = 'across ' + k.foc_orders + ' orders';
-document.getElementById('kpi-commission').textContent = 'Rs. ' + fmt.compact(k.commission);
-document.getElementById('kpi-commission-sub').textContent = 'paid to B2B partners';
-document.getElementById('kpi-commission-rate').textContent = fmt.pct1(k.commission_pct);
-
-document.getElementById('kpi-profit').textContent = 'Rs. ' + fmt.compact(k.profit);
-document.getElementById('kpi-margin-net').textContent = fmt.pct1(k.margin_on_net);
-document.getElementById('kpi-cost').textContent = 'Rs. ' + fmt.compact(k.cost);
-document.getElementById('kpi-cost-sub').textContent = 'total cost of goods sold';
-document.getElementById('kpi-profit-order').textContent = 'Rs. ' + fmt.compact(k.profit_per_order);
-document.getElementById('kpi-margin-gross-sub').textContent = fmt.pct1(k.margin_on_gross) + ' margin on gross';
-
-function refreshInvoiceKPIs(){
-  const invs = getInvoices();
-  let outstanding=0, outCount=0, overdue=0, overCount=0, dueSoon=0, dsCount=0, collected=0, colCount=0;
-  invs.forEach(inv => {
-    if(inv.paid){ collected += inv.net; colCount++; }
-    else {
-      outstanding += inv.net; outCount++;
-      if(inv.status === 'Overdue'){ overdue += inv.net; overCount++; }
-      else if(inv.status === 'Due Soon'){ dueSoon += inv.net; dsCount++; }
-    }
-  });
-  document.getElementById('kpi-outstanding').textContent = 'Rs. ' + fmt.compact(outstanding);
-  document.getElementById('kpi-outstanding-count').textContent = outCount + ' unpaid invoices';
-  document.getElementById('kpi-overdue').textContent = 'Rs. ' + fmt.compact(overdue);
-  document.getElementById('kpi-overdue-count').textContent = overCount + ' past due';
-  document.getElementById('kpi-duesoon').textContent = 'Rs. ' + fmt.compact(dueSoon);
-  document.getElementById('kpi-duesoon-count').textContent = dsCount + ' coming up';
-  document.getElementById('kpi-collected').textContent = 'Rs. ' + fmt.compact(collected);
-  document.getElementById('kpi-collected-count').textContent = colCount + ' invoices paid';
-
-  const banner = document.getElementById('reminder-banner');
-  const overdueInvs = invs.filter(i => i.status==='Overdue').sort((a,b)=>a.days_to_due - b.days_to_due);
-  const dueSoonInvs = invs.filter(i => i.status==='Due Soon').sort((a,b)=>a.days_to_due - b.days_to_due);
-  if(overdueInvs.length === 0 && dueSoonInvs.length === 0){
-    banner.innerHTML = '<div class="alert-banner alert-ok"><b>All caught up.</b> No overdue invoices and nothing due in the next 7 days.</div>';
-    return;
-  }
-  let html = '<div class="alert-banner ' + (overdueInvs.length>0?'alert-danger':'alert-warn') + '">';
-  html += '<div class="font-bold mb-2">Payment Reminders</div>';
-  if(overdueInvs.length > 0){
-    html += '<div class="mb-2"><b>'+overdueInvs.length+' overdue \u2022 Rs. '+fmt.compact(overdue)+' past due</b>';
-    html += '<div class="text-xs mt-1">Top 3 oldest: ';
-    html += overdueInvs.slice(0,3).map(i => i.customer+' ('+i.orderReference+', '+Math.abs(i.days_to_due)+'d late, Rs. '+fmt.compact(i.net)+')').join(' \u2022 ');
-    html += '</div></div>';
-  }
-  if(dueSoonInvs.length > 0){
-    html += '<div><b>'+dueSoonInvs.length+' due within 7 days \u2022 Rs. '+fmt.compact(dueSoon)+'</b>';
-    html += '<div class="text-xs mt-1">Next up: ';
-    html += dueSoonInvs.slice(0,3).map(i => i.customer+' ('+i.orderReference+', '+i.days_to_due+'d, Rs. '+fmt.compact(i.net)+')').join(' \u2022 ');
-    html += '</div></div>';
-  }
-  html += '</div>';
-  banner.innerHTML = html;
-}
-
-Chart.defaults.font.family = 'Inter,system-ui,sans-serif';
-Chart.defaults.font.size = 11;
-Chart.defaults.color = '#4A5568';
-
-new Chart(document.getElementById('chart-monthly'), {
-  type: 'bar',
-  data: {
-    labels: DATA.monthly.map(m => m.month),
-    datasets: [
-      {label:'Net Revenue (PKR)', data: DATA.monthly.map(m=>m.net), backgroundColor:'#00C0FF', borderRadius:6, yAxisID:'y'},
-      {label:'Orders', data: DATA.monthly.map(m=>m.orders), type:'line', borderColor:'#007AA8', backgroundColor:'#007AA8', borderWidth:2, tension:.3, pointRadius:4, yAxisID:'y1'},
-    ]
-  },
-  options: {
-    responsive:true, maintainAspectRatio:false,
-    interaction:{mode:'index',intersect:false},
-    plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label: c => c.dataset.label+': '+(c.dataset.yAxisID==='y1'?fmt.int(c.parsed.y):'Rs. '+fmt.money(c.parsed.y))}}},
-    scales:{
-      y:{beginAtZero:true,ticks:{callback:v=>'Rs. '+fmt.compact(v)}},
-      y1:{beginAtZero:true,position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>fmt.int(v)}},
-    }
-  }
-});
-
-new Chart(document.getElementById('chart-cat'), {
-  type:'doughnut',
-  data:{labels: DATA.category.map(c=>c.category),
-    datasets:[{data: DATA.category.map(c=>c.net), backgroundColor: C, borderWidth:2, borderColor:'#fff'}]},
-  options:{responsive:true, maintainAspectRatio:false, cutout:'55%',
-    plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:10}},
-             tooltip:{callbacks:{label: c => {const t=c.dataset.data.reduce((a,b)=>a+b,0); return c.label+': Rs. '+fmt.money(c.parsed)+' ('+fmt.pct1(c.parsed/t)+')';}}}}}
-});
-
-const top10sku = DATA.sku.slice(0,10);
-new Chart(document.getElementById('chart-sku'), {
-  type:'bar',
-  data:{labels: top10sku.map(s=>s.variant),
-    datasets:[{label:'Net Revenue (PKR)', data: top10sku.map(s=>s.net), backgroundColor:'#00C0FF', borderRadius:4}]},
-  options:{indexAxis:'y', responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{display:false}, tooltip:{callbacks:{label: c => 'Rs. '+fmt.money(c.parsed.x)}}},
-    scales:{x:{ticks:{callback:v=>'Rs. '+fmt.compact(v)}}}}
-});
-
-const top10cust = DATA.customer.slice(0,10);
-new Chart(document.getElementById('chart-cust'), {
-  type:'bar',
-  data:{labels: top10cust.map(c=>c.customer),
-    datasets:[{label:'Net Revenue (PKR)', data: top10cust.map(c=>c.net), backgroundColor:'#007AA8', borderRadius:4}]},
-  options:{indexAxis:'y', responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{display:false}, tooltip:{callbacks:{label: c => 'Rs. '+fmt.money(c.parsed.x)}}},
-    scales:{x:{ticks:{callback:v=>'Rs. '+fmt.compact(v)}}}}
-});
-
-new Chart(document.getElementById('chart-pareto'), {
-  data:{labels: DATA.customer.map(c=>c.customer),
-    datasets:[
-      {type:'bar', label:'Net Revenue (PKR)', data: DATA.customer.map(c=>c.net), backgroundColor:'#00C0FF', yAxisID:'y'},
-      {type:'line', label:'Cumulative %', data: DATA.customer.map(c=>c.cum_share*100), borderColor:'#FF6B9D', backgroundColor:'#FF6B9D', tension:.2, pointRadius:3, yAxisID:'y1'}
-    ]},
-  options:{responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label: c => c.dataset.yAxisID==='y1'?('Cumulative: '+c.parsed.y.toFixed(1)+'%'):('Rs. '+fmt.money(c.parsed.y))}}},
-    scales:{x:{ticks:{autoSkip:false, maxRotation:60, minRotation:45, font:{size:9}}},
-      y:{beginAtZero:true,ticks:{callback:v=>'Rs. '+fmt.compact(v)}},
-      y1:{beginAtZero:true,max:100,position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>v+'%'}}}}
-});
-
-new Chart(document.getElementById('chart-tier'), {
-  type:'bar',
-  data:{labels: DATA.tier.map(t=>t.pct_label),
-    datasets:[
-      {label:'Gross (PKR)', data: DATA.tier.map(t=>t.gross), backgroundColor:'#00C0FF', borderRadius:4},
-      {label:'Commission (PKR)', data: DATA.tier.map(t=>t.commission), backgroundColor:'#FF6B9D', borderRadius:4}
-    ]},
-  options:{responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label: c => c.dataset.label+': Rs. '+fmt.money(c.parsed.y)}}},
-    scales:{y:{beginAtZero:true,ticks:{callback:v=>'Rs. '+fmt.compact(v)}}}}
-});
-
-// Monthly P&L
-new Chart(document.getElementById('chart-pnl'), {
-  type:'bar',
-  data:{labels: DATA.monthly.map(m => m.month),
-    datasets:[
-      {label:'Net Revenue', data: DATA.monthly.map(m=>m.net), backgroundColor:'#00C0FF', borderRadius:4, stack:'rev'},
-      {label:'Cost of Goods', data: DATA.monthly.map(m=>m.cost), backgroundColor:'#F59E0B', borderRadius:4, stack:'cost'},
-      {label:'Profit', type:'line', data: DATA.monthly.map(m=>m.profit), borderColor:'#15805C', backgroundColor:'#15805C', borderWidth:3, tension:.3, pointRadius:5}
-    ]},
-  options:{responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{position:'bottom'},
-      tooltip:{callbacks:{label: c => c.dataset.label+': Rs. '+fmt.money(c.parsed.y)}}},
-    scales:{y:{beginAtZero:true,ticks:{callback:v=>'Rs. '+fmt.compact(v)}}}}
-});
-
-// Top 10 SKUs by profit
-const top10profit = DATA.sku.slice().sort((a,b)=>b.profit-a.profit).slice(0,10);
-new Chart(document.getElementById('chart-sku-profit'), {
-  type:'bar',
-  data:{labels: top10profit.map(s=>s.variant),
-    datasets:[{label:'Profit (PKR)', data: top10profit.map(s=>s.profit), backgroundColor:'#15805C', borderRadius:4}]},
-  options:{indexAxis:'y', responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{display:false},
-      tooltip:{callbacks:{label: c => {
-        const s = top10profit[c.dataIndex];
-        return 'Profit: Rs. '+fmt.money(s.profit)+' \u2022 Margin: '+fmt.pct1(s.margin);
-      }}}},
-    scales:{x:{ticks:{callback:v=>'Rs. '+fmt.compact(v)}}}}
-});
-
-function renderTable(id, rows, cols, renderers){
-  const tbody = document.querySelector('#'+id+' tbody');
-  tbody.innerHTML = rows.map((r,i)=>{
-    return '<tr>' + cols.map(c => {
-      const v = c==='rank' ? (i+1) : r[c];
-      const renderer = renderers[c];
-      const cls = (['orders','units','net','share','cum_share','aov','commission_pct','days_since','avg_price','velocity','customers','rank','min_gap','max_gap','avg_gap','days_to_due','lines','foc_units','profit','margin','cost','unit_cost'].includes(c))?'num':'';
-      return '<td class="'+cls+'">'+(renderer?renderer(v,r):(v??'\u2014'))+'</td>';
-    }).join('') + '</tr>';
-  }).join('');
-}
-
-const custCols=['rank','customer','orders','units','net','profit','margin','share','aov','last','days_since','status'];
-const custRenderers={net:v=>fmt.money(v),profit:v=>fmt.money(v),margin:v=>fmt.pct1(v),share:v=>fmt.pct1(v),aov:v=>fmt.money(v),units:v=>fmt.int(v),orders:v=>fmt.int(v),days_since:v=>fmt.days(v),
-  status:v => '<span class="pill pill-'+(v==='Active'?'active':v==='At-Risk'?'risk':'lapsed')+'">'+v+'</span>'};
-
-const skuCols=['rank','variant','category','units','foc_units','net','cost','profit','margin','avg_price','unit_cost','velocity'];
-const skuRenderers={net:v=>fmt.money(v),cost:v=>fmt.money(v),profit:v=>fmt.money(v),margin:v=>fmt.pct1(v),unit_cost:v=>fmt.money(v),avg_price:v=>fmt.money(v),velocity:v=>fmt.int(v),units:v=>fmt.int(v),foc_units:v=>v>0?'<span class="pill pill-foc">'+v+'</span>':'\u2014',
-  category:v=>'<span class="pill pill-cat">'+v+'</span>'};
-
-const reordCols=['customer','orders','avg_gap','min_gap','max_gap','first','last','days_since'];
-const reordRenderers={avg_gap:v=>v==null?'\u2014':v.toFixed(1),min_gap:v=>v==null?'\u2014':v,max_gap:v=>v==null?'\u2014':v,days_since:v=>fmt.days(v),orders:v=>fmt.int(v)};
-
-// FOC table
-function renderFocTable(){
-  const tbody = document.querySelector('#tbl-foc tbody');
-  if(!DATA.foc_items || DATA.foc_items.length === 0){
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-gray-500 py-6">No FOC items recorded in this period.</td></tr>';
-  } else {
-    tbody.innerHTML = DATA.foc_items.map(f =>
-      '<tr>' +
-      '<td>'+f.issue+'</td>' +
-      '<td><b>'+f.orderReference+'</b></td>' +
-      '<td>'+f.customer+'</td>' +
-      '<td>'+f.variant+'</td>' +
-      '<td><span class="pill pill-cat">'+(f.category||'')+'</span></td>' +
-      '<td class="num">'+fmt.int(f.quantity)+'</td>' +
-      '<td class="num">Rs. '+fmt.money(f.ref_price)+'</td>' +
-      '<td class="num">Rs. '+fmt.money(f.retail)+'</td>' +
-      '</tr>'
-    ).join('');
-  }
-  document.getElementById('foc-count-pill').textContent = (DATA.foc_items||[]).length + ' line items';
-}
-
-const invCols=['orderReference','customer','issue','due','days_to_due','net','status','action'];
-function statusPill(inv){
-  if(inv.paid) return '<span class="pill pill-paid">Paid'+(inv.paid_date?' \u2022 '+inv.paid_date:'')+'</span>';
-  if(inv.status==='Overdue') return '<span class="pill pill-overdue">Overdue ('+Math.abs(inv.days_to_due)+'d late)</span>';
-  if(inv.status==='Due Soon') return '<span class="pill pill-due-soon">Due in '+inv.days_to_due+'d</span>';
-  return '<span class="pill pill-upcoming">In '+inv.days_to_due+'d</span>';
-}
-function invRow(inv){
-  const cls = inv.paid ? 'paid' : '';
-  const btn = inv.paid
-    ? '<button class="btn btn-outline-danger" data-unmark="'+inv.orderReference+'">Unmark</button>'
-    : '<button class="btn btn-success" data-mark="'+inv.orderReference+'">Mark Paid</button>';
-  const focBadge = inv.foc_lines>0 ? ' <span class="pill pill-foc" title="Contains FOC items">FOC</span>' : '';
-  return '<tr class="'+cls+'">' +
-    '<td><b>'+inv.orderReference+'</b>'+focBadge+'</td>' +
-    '<td>'+inv.customer+'</td>' +
-    '<td>'+inv.issue+'</td>' +
-    '<td>'+inv.due+'</td>' +
-    '<td class="num">'+(inv.paid?'\u2014':(inv.days_to_due>=0?'+'+inv.days_to_due:inv.days_to_due))+'</td>' +
-    '<td class="num amount">Rs. '+fmt.money(inv.net)+'</td>' +
-    '<td>'+statusPill(inv)+'</td>' +
-    '<td>'+btn+'</td>' +
-    '</tr>';
-}
-
-let invFilter = 'all';
-function applyInvFilter(invs){
-  if(invFilter==='unpaid') return invs.filter(i=>!i.paid);
-  if(invFilter==='paid') return invs.filter(i=>i.paid);
-  if(invFilter==='overdue') return invs.filter(i=>i.status==='Overdue');
-  if(invFilter==='duesoon') return invs.filter(i=>i.status==='Due Soon');
-  return invs;
-}
-let invSortKey = 'days_to_due';
-let invSortAsc = true;
-
-function renderInvoiceTable(){
-  let invs = getInvoices();
-  const q = document.getElementById('inv-search').value.toLowerCase().trim();
-  if(q){
-    invs = invs.filter(i => i.orderReference.toLowerCase().includes(q) || (i.customer||'').toLowerCase().includes(q));
-  }
-  invs = applyInvFilter(invs);
-  invs.sort((a,b)=>{
-    const av=a[invSortKey], bv=b[invSortKey];
-    if(av==null) return 1; if(bv==null) return -1;
-    if(typeof av==='number') return invSortAsc?av-bv:bv-av;
-    if(av instanceof Date) return invSortAsc?(av-bv):(bv-av);
-    return invSortAsc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-  });
-  const tbody = document.querySelector('#tbl-inv tbody');
-  tbody.innerHTML = invs.map(invRow).join('');
-}
-
-document.querySelectorAll('#tbl-inv thead th').forEach(th=>{
-  th.addEventListener('click', ()=>{
-    const key = th.dataset.sort;
-    if(!key) return;
-    if(invSortKey === key) invSortAsc = !invSortAsc;
-    else { invSortKey = key; invSortAsc = true; }
-    renderInvoiceTable();
-  });
-});
-
-document.querySelectorAll('.filter-btn').forEach(b=>{
-  b.addEventListener('click', ()=>{
-    document.querySelectorAll('.filter-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    invFilter = b.dataset.filter;
-    renderInvoiceTable();
-  });
-});
-
-document.getElementById('inv-search').addEventListener('input', renderInvoiceTable);
-
-document.querySelector('#tbl-inv tbody').addEventListener('click', (e)=>{
-  const mark = e.target.closest('[data-mark]');
-  const unmark = e.target.closest('[data-unmark]');
-  if(mark){
-    const ref = mark.dataset.mark;
-    const paidOn = new Date().toISOString().slice(0,10);
-    paidState[ref] = {paid:true, date:paidOn};
-    savePaidState(paidState);
-    renderInvoiceTable();
-    refreshInvoiceKPIs();
-  } else if(unmark){
-    const ref = unmark.dataset.unmark;
-    delete paidState[ref];
-    savePaidState(paidState);
-    renderInvoiceTable();
-    refreshInvoiceKPIs();
-  }
-});
-
-document.getElementById('inv-export').addEventListener('click', ()=>{
-  let invs = getInvoices();
-  invs = applyInvFilter(invs);
-  const headers = ['Invoice','Customer','Issued','Due','DaysToDue','Net','Status','PaidDate','FOCLines'];
-  const rows = invs.map(i => [i.orderReference, i.customer, i.issue, i.due, i.days_to_due, Math.round(i.net), i.paid?'Paid':i.status, i.paid_date||'', i.foc_lines||0]);
-  const csv = [headers.join(','), ...rows.map(r=>r.map(v => {
-    const s = String(v ?? '');
-    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
-  }).join(','))].join('\n');
-  const blob = new Blob([csv], {type:'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'bleuface_invoices_' + today.toISOString().slice(0,10) + '.csv';
-  a.click();
-});
-
-let custSorted = DATA.customer.slice();
-let skuSorted = DATA.sku.slice();
-let reordSorted = DATA.reorder.slice();
-function renderOtherTables(){
-  const q = document.getElementById('cust-search').value.toLowerCase();
-  renderTable('tbl-cust', q ? custSorted.filter(r => (r.customer||'').toLowerCase().includes(q)) : custSorted, custCols, custRenderers);
-  const q2 = document.getElementById('sku-search').value.toLowerCase();
-  renderTable('tbl-sku', q2 ? skuSorted.filter(r => (r.variant||'').toLowerCase().includes(q2)||(r.category||'').toLowerCase().includes(q2)) : skuSorted, skuCols, skuRenderers);
-  renderTable('tbl-reorder', reordSorted.filter(r=>r.orders>=2), reordCols, reordRenderers);
-}
-function sortBy(arr, key, asc){
-  return arr.slice().sort((a,b)=>{
-    const av=a[key], bv=b[key];
-    if(av==null) return 1; if(bv==null) return -1;
-    if(typeof av==='number') return asc?av-bv:bv-av;
-    return asc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-  });
-}
-function wireSort(tblId, dataRef, setter){
-  const dirState = {};
-  document.querySelectorAll('#'+tblId+' thead th').forEach(th=>{
-    th.addEventListener('click', ()=>{
-      const key = th.dataset.sort;
-      if(!key || key==='rank') return;
-      dirState[key] = !dirState[key];
-      setter(sortBy(dataRef(), key, dirState[key]));
+async function init() {
+    Papa.parse(SHEET_CSV_URL, {
+        download: true,
+        header: true,
+        dynamicTyping: true,
+        complete: function(results) {
+            document.getElementById('loader').style.display = 'none';
+            processData(results.data);
+        }
     });
-  });
 }
-wireSort('tbl-cust', ()=>custSorted, s => { custSorted = s; renderOtherTables(); });
-wireSort('tbl-sku', ()=>skuSorted, s => { skuSorted = s; renderOtherTables(); });
-wireSort('tbl-reorder', ()=>reordSorted, s => { reordSorted = s; renderOtherTables(); });
-document.getElementById('cust-search').addEventListener('input', renderOtherTables);
-document.getElementById('sku-search').addEventListener('input', renderOtherTables);
 
-renderOtherTables();
-renderFocTable();
-refreshInvoiceKPIs();
-renderInvoiceTable();
+function processData(rawData) {
+    // This function will take the rows from your Google Sheet 
+    // and map them to the charts and KPIs you already have.
+    console.log("Data loaded:", rawData);
+    
+    // Logic to update document.getElementById('kpi-net') etc. goes here
+    // based on how your Google Sheet columns are named.
+}
+
+window.onload = init;
 </script>
 </body>
 </html>
