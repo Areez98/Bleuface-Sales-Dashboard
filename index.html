@@ -733,87 +733,134 @@ const PROXIES = [
   u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
 ];
 
+function cleanCSV(text){
+  // Strip BOM (﻿) — Google Sheets often adds this to CSV exports
+  // Also normalise Windows line endings
+  return text.replace(/^﻿/, '').replace(/
+/g, '
+').replace(/
+/g, '
+');
+}
+
 async function fetchCSV(url){
   const bust = url + (url.includes('?')?'&':'?') + '_t=' + Date.now();
 
   // 1. Try direct (works when hosted on GitHub Pages / any real server)
   try {
     const r = await fetch(bust, {signal: AbortSignal.timeout(8000)});
-    if(r.ok){ const t=await r.text(); if(t.trim().length>10) return t; }
+    if(r.ok){ const t = await r.text(); if(t.trim().length > 10) return cleanCSV(t); }
   } catch(_){}
 
   // 2. Try each CORS proxy in turn
   for(const proxy of PROXIES){
     try{
       const r = await fetch(proxy(url), {signal: AbortSignal.timeout(10000)});
-      if(r.ok){ const t=await r.text(); if(t.trim().length>10) return t; }
+      if(r.ok){ const t = await r.text(); if(t.trim().length > 10) return cleanCSV(t); }
     } catch(_){}
   }
 
-  throw new Error('All fetch attempts failed. Check the sheet is published (File → Share → Publish to web → CSV).');
+  throw new Error('All fetch attempts failed. Check the sheet is published: File → Share → Publish to web → select Orders sheet → CSV.');
 }
 
 /* Handle both Excel serial numbers AND formatted date strings */
 function parseFlexDate(val){
-  if(val==null||val==='') return null;
+  if(val == null || val === '') return null;
   const n = parseFloat(val);
+  // Excel serial (40000-70000 covers 2009-2091)
   if(!isNaN(n) && n > 40000 && n < 70000) return excelToDate(n);
-  if(typeof val === 'string'){
-    // Try ISO, US, UK formats
-    const d = new Date(val.replace(/\/g,'-'));
-    if(!isNaN(d.getTime())) return d;
-    // DD/MM/YYYY
-    const parts = val.split('/');
-    if(parts.length===3){
-      const d2 = new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`);
-      if(!isNaN(d2.getTime())) return d2;
+  if(typeof val === 'string' && val.trim()){
+    const s = val.trim();
+    // ISO: YYYY-MM-DD
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)){ const d=new Date(s); if(!isNaN(d))return d; }
+    // US: M/D/YYYY or MM/DD/YYYY
+    if(/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)){
+      const [m,d,y]=s.split('/').map(Number);
+      const dt=new Date(y,m-1,d); if(!isNaN(dt))return dt;
     }
+    // UK: DD/MM/YYYY
+    if(/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s)){
+      const parts=s.split('/');
+      if(parts.length===3){
+        const dt=new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`);
+        if(!isNaN(dt))return dt;
+      }
+    }
+    // Generic fallback
+    const d=new Date(s); if(!isNaN(d.getTime()))return d;
   }
   return null;
 }
 
-/* Normalise CSV headers: trim whitespace, lowercase lookup */
-function getField(row, ...names){
+/* Find a field value with flexible key matching (handles BOM, extra spaces, case) */
+function col(row, ...names){
   for(const name of names){
-    if(row[name]!==undefined) return row[name];
-    // Try trimmed keys
-    const trimKey = Object.keys(row).find(k=>k.trim()===name);
-    if(trimKey!==undefined) return row[trimKey];
+    if(row[name] !== undefined) return row[name];
+  }
+  // Fallback: strip BOM/spaces from all keys, try again
+  const keys = Object.keys(row);
+  for(const name of names){
+    const clean = name.trim().toLowerCase();
+    const found = keys.find(k => k.replace(/^﻿/,'').trim().toLowerCase() === clean);
+    if(found !== undefined) return row[found];
   }
   return undefined;
 }
 
+function parseNum(v){ const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
 function parseOrdersCSV(text){
-  const {data, errors} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:false, transformHeader: h=>h.trim()});
-  if(data.length===0) console.warn('CSV parse returned 0 rows. Errors:', errors);
-  console.log('CSV rows fetched:', data.length, '| Sample keys:', data[0]?Object.keys(data[0]).slice(0,5):[]);
-  return data.map(r=>{
-    const qty   = parseFloat(r['Quantity'])||0;
-    const lNet  = parseFloat(r['Line Net'])||0;
-    const lGross= parseFloat(r['Line Gross'])||0;
-    const lComm = parseFloat(r['Line Commission'])||0;
-    const uCost = parseFloat(r['Unit Cost'])||0;
-    const lCost = parseFloat(r['Line Cost'])||0;
-    const lProfit=parseFloat(r['Line Profit'])||0;
+  const {data, errors} = Papa.parse(text, {
+    header: true,
+    skipEmptyLines: true,
+    dynamicTyping: false,
+    transformHeader: h => h.replace(/^﻿/, '').trim(),
+  });
+
+  if(data.length === 0){
+    console.error('CSV parse returned 0 rows. Errors:', errors);
+    console.error('Raw text preview:', text.slice(0, 300));
+    throw new Error('CSV fetched but 0 rows found. Raw preview: ' + text.slice(0, 120));
+  }
+
+  // Log actual headers so we can debug column-name mismatches
+  const actualHeaders = Object.keys(data[0]);
+  console.log('CSV rows:', data.length, '| Headers found:', actualHeaders.join(' | '));
+
+  // Show headers in status bar for easy debugging
+  const sb = document.getElementById('data-status-bar');
+  if(sb) sb.setAttribute('data-headers', actualHeaders.join(', '));
+
+  return data.map(r => {
+    const orderRef = String(col(r,'Order Ref','order_ref','OrderRef','Invoice','invoice') || '').trim();
+    const qty      = parseNum(col(r,'Quantity','quantity','Qty','qty'));
+    const lNet     = parseNum(col(r,'Line Net','line_net','LineNet','Net','net'));
+    const lGross   = parseNum(col(r,'Line Gross','line_gross','LineGross','Gross','gross'));
+    const lComm    = parseNum(col(r,'Line Commission','line_commission','Commission','commission'));
+    const uCost    = parseNum(col(r,'Unit Cost','unit_cost','UnitCost','Cost Per Unit'));
+    const lCost    = parseNum(col(r,'Line Cost','line_cost','LineCost','Total Cost'));
+    const lProfit  = parseNum(col(r,'Line Profit','line_profit','LineProfit','Profit'));
+    const isFOCVal = String(col(r,'Is FOC','is_foc','IsFOC','FOC') || '').toUpperCase().trim();
+
     return {
-      orderRef:   String(r['Order Ref']||'').trim(),
-      orderDate:  parseFlexDate(r['Order Date']),
-      customer:   String(r['Customer']||'').trim(),
-      product:    String(r['Product']||'').trim(),
-      barcode:    normBarcode(String(r['Barcode']||'')),
-      category:   String(r['Category']||'').trim(),
-      quantity:   qty,
-      productPrice:parseFloat(r['Product Price'])||0,
-      commPct:    parseFloat(r['Commission %'])||0,
-      lineCommission:lComm,
-      lineNet:    lNet,
-      lineGross:  lGross,
-      unitCost:   uCost,
-      lineCost:   lCost,
-      lineProfit: lProfit,
-      isFOC:      String(r['Is FOC']||'').toUpperCase().trim()==='TRUE',
+      orderRef,
+      orderDate:    parseFlexDate(col(r,'Order Date','order_date','OrderDate','Date','date')),
+      customer:     String(col(r,'Customer','customer','Client','client') || '').trim(),
+      product:      String(col(r,'Product','product','SKU','sku','Item') || '').trim(),
+      barcode:      normBarcode(String(col(r,'Barcode','barcode','SKU Code') || '')),
+      category:     String(col(r,'Category','category','Cat') || '').trim(),
+      quantity:     qty,
+      productPrice: parseNum(col(r,'Product Price','product_price','Price','price')),
+      commPct:      parseNum(col(r,'Commission %','commission_pct','Comm %','Comm%')),
+      lineCommission: lComm,
+      lineNet:      lNet,
+      lineGross:    lGross,
+      unitCost:     uCost,
+      lineCost:     lCost,
+      lineProfit:   lProfit,
+      isFOC:        isFOCVal === 'TRUE' || isFOCVal === '1' || isFOCVal === 'YES',
     };
-  }).filter(r=>r.orderRef && r.orderRef!=='Order Ref');
+  }).filter(r => r.orderRef && r.orderRef !== 'Order Ref' && r.orderRef !== '');
 }
 
 function parseProductsCSV(text){
@@ -879,8 +926,16 @@ async function loadData(){
   document.getElementById('loading-overlay').classList.add('hidden');
   document.getElementById('hdr-refresh').textContent = rowCount.toLocaleString()+' rows · Updated '+new Date().toLocaleTimeString();
   const sb = document.getElementById('data-status-bar');
-  const sampleDate = ORDERS.length>0&&ORDERS[0].orderDate ? ORDERS[0].orderDate.toLocaleDateString() : 'no dates parsed';
-  sb.textContent = '✓ Loaded '+rowCount+' order lines · Sample date: '+sampleDate+' · Customers: '+[...new Set(ORDERS.map(o=>o.customer))].length+' · SKUs: '+[...new Set(ORDERS.map(o=>o.product))].length;
+  const sampleDate = ORDERS.length>0&&ORDERS[0].orderDate ? ORDERS[0].orderDate.toLocaleDateString() : '⚠ no dates parsed';
+  const hasDates    = ORDERS.some(o=>o.orderDate instanceof Date&&!isNaN(o.orderDate));
+  const hasRevenue  = ORDERS.some(o=>o.lineNet>0);
+  const uniqueCust  = new Set(ORDERS.map(o=>o.customer)).size;
+  const uniqueProd  = new Set(ORDERS.map(o=>o.product)).size;
+  const hdrs        = sb.getAttribute('data-headers')||'(headers unavailable)';
+  sb.innerHTML = '<b>✓ '+rowCount+' rows loaded</b> · '+uniqueCust+' customers · '+uniqueProd+' SKUs'
+    +(hasDates?' · dates OK':' · <span style="color:var(--orange)">⚠ date parse failed</span>')
+    +(hasRevenue?' · revenue OK':' · <span style="color:var(--red)">⚠ no revenue found — check column names</span>')
+    +'<details style="display:inline;margin-left:12px"><summary style="cursor:pointer;color:var(--muted)">show columns</summary><div style="margin-top:4px;color:var(--muted);word-break:break-all">'+hdrs+'</div></details>';
   sb.style.display = 'block';
 }
 
