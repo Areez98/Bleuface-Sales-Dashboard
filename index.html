@@ -202,7 +202,7 @@ tbody tr:last-child td{border-bottom:none}
     </div>
   </div>
   <div class="header-meta">
-    <span><span class="status-dot"></span><span id="hdr-refresh">Live</span></span>
+    <span><span class="status-dot"></span><span id="hdr-refresh">Connecting…</span></span>
     <span>All figures in PKR</span>
     <span id="hdr-period"></span>
     <button class="btn-refresh" onclick="reloadData()">↺ Refresh</button>
@@ -217,6 +217,9 @@ tbody tr:last-child td{border-bottom:none}
   <div class="nav-tab" data-tab="strategy">Strategy</div>
   <div class="nav-tab" data-tab="finance">Finance</div>
 </nav>
+
+<!-- STATUS STRIP -->
+<div id="data-status-bar" style="display:none;padding:8px 32px;font-size:11px;background:rgba(0,216,152,.08);border-bottom:1px solid rgba(0,216,152,.2);color:var(--green);font-family:var(--mono)"></div>
 
 <!-- ═══════════════════════════════════════════════════ -->
 <!--  OVERVIEW                                           -->
@@ -750,26 +753,67 @@ async function fetchCSV(url){
   throw new Error('All fetch attempts failed. Check the sheet is published (File → Share → Publish to web → CSV).');
 }
 
+/* Handle both Excel serial numbers AND formatted date strings */
+function parseFlexDate(val){
+  if(val==null||val==='') return null;
+  const n = parseFloat(val);
+  if(!isNaN(n) && n > 40000 && n < 70000) return excelToDate(n);
+  if(typeof val === 'string'){
+    // Try ISO, US, UK formats
+    const d = new Date(val.replace(/\/g,'-'));
+    if(!isNaN(d.getTime())) return d;
+    // DD/MM/YYYY
+    const parts = val.split('/');
+    if(parts.length===3){
+      const d2 = new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`);
+      if(!isNaN(d2.getTime())) return d2;
+    }
+  }
+  return null;
+}
+
+/* Normalise CSV headers: trim whitespace, lowercase lookup */
+function getField(row, ...names){
+  for(const name of names){
+    if(row[name]!==undefined) return row[name];
+    // Try trimmed keys
+    const trimKey = Object.keys(row).find(k=>k.trim()===name);
+    if(trimKey!==undefined) return row[trimKey];
+  }
+  return undefined;
+}
+
 function parseOrdersCSV(text){
-  const {data} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:true});
-  return data.map(r=>({
-    orderRef:   String(r['Order Ref']||'').trim(),
-    orderDate:  excelToDate(r['Order Date']),
-    customer:   String(r['Customer']||'').trim(),
-    product:    String(r['Product']||'').trim(),
-    barcode:    normBarcode(String(r['Barcode']||'')),
-    category:   String(r['Category']||'').trim(),
-    quantity:   +r['Quantity']||0,
-    productPrice:+r['Product Price']||0,
-    commPct:    +r['Commission %']||0,
-    lineCommission:+r['Line Commission']||0,
-    lineNet:    +r['Line Net']||0,
-    lineGross:  +r['Line Gross']||0,
-    unitCost:   +r['Unit Cost']||0,
-    lineCost:   +r['Line Cost']||0,
-    lineProfit: +r['Line Profit']||0,
-    isFOC:      String(r['Is FOC']||'').toUpperCase()==='TRUE',
-  })).filter(r=>r.orderRef);
+  const {data, errors} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:false, transformHeader: h=>h.trim()});
+  if(data.length===0) console.warn('CSV parse returned 0 rows. Errors:', errors);
+  console.log('CSV rows fetched:', data.length, '| Sample keys:', data[0]?Object.keys(data[0]).slice(0,5):[]);
+  return data.map(r=>{
+    const qty   = parseFloat(r['Quantity'])||0;
+    const lNet  = parseFloat(r['Line Net'])||0;
+    const lGross= parseFloat(r['Line Gross'])||0;
+    const lComm = parseFloat(r['Line Commission'])||0;
+    const uCost = parseFloat(r['Unit Cost'])||0;
+    const lCost = parseFloat(r['Line Cost'])||0;
+    const lProfit=parseFloat(r['Line Profit'])||0;
+    return {
+      orderRef:   String(r['Order Ref']||'').trim(),
+      orderDate:  parseFlexDate(r['Order Date']),
+      customer:   String(r['Customer']||'').trim(),
+      product:    String(r['Product']||'').trim(),
+      barcode:    normBarcode(String(r['Barcode']||'')),
+      category:   String(r['Category']||'').trim(),
+      quantity:   qty,
+      productPrice:parseFloat(r['Product Price'])||0,
+      commPct:    parseFloat(r['Commission %'])||0,
+      lineCommission:lComm,
+      lineNet:    lNet,
+      lineGross:  lGross,
+      unitCost:   uCost,
+      lineCost:   lCost,
+      lineProfit: lProfit,
+      isFOC:      String(r['Is FOC']||'').toUpperCase().trim()==='TRUE',
+    };
+  }).filter(r=>r.orderRef && r.orderRef!=='Order Ref');
 }
 
 function parseProductsCSV(text){
@@ -812,13 +856,38 @@ async function loadData(){
     catch(e){ EXPENSES = EMBEDDED_EXPENSES.map(e=>({...e,date:new Date(e.date)})); }
   } else { EXPENSES = EMBEDDED_EXPENSES.map(e=>({...e,date:new Date(e.date)})); }
 
-  render();
+  const rowCount = ORDERS.length;
+  console.log('Parsed orders:', rowCount);
+  if(rowCount === 0){
+    throw new Error('CSV fetched but 0 rows parsed. Check column headers match the Orders sheet exactly.');
+  }
+  try {
+    render();
+  } catch(err){
+    console.error('Render error:', err);
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    document.getElementById('loading-overlay').innerHTML = `
+      <div class="loader-brand">bleuface</div>
+      <div style="color:var(--red);font-size:13px;text-align:center;max-width:460px;line-height:1.8;padding:0 20px">
+        <b>Data loaded but render failed</b><br/>
+        <code style="color:var(--muted);font-size:11px">\${err.message}</code>
+      </div>
+      <button class="btn-refresh" onclick="location.reload()" style="margin-top:16px">↺ Retry</button>
+    `;
+    return;
+  }
   document.getElementById('loading-overlay').classList.add('hidden');
-  document.getElementById('hdr-refresh').textContent = 'Updated '+new Date().toLocaleTimeString();
+  document.getElementById('hdr-refresh').textContent = rowCount.toLocaleString()+' rows · Updated '+new Date().toLocaleTimeString();
+  const sb = document.getElementById('data-status-bar');
+  const sampleDate = ORDERS.length>0&&ORDERS[0].orderDate ? ORDERS[0].orderDate.toLocaleDateString() : 'no dates parsed';
+  sb.textContent = '✓ Loaded '+rowCount+' order lines · Sample date: '+sampleDate+' · Customers: '+[...new Set(ORDERS.map(o=>o.customer))].length+' · SKUs: '+[...new Set(ORDERS.map(o=>o.product))].length;
+  sb.style.display = 'block';
 }
 
 async function reloadData(){
-  try{ await loadData(); }catch(e){ console.error(e); alert('Failed to refresh: '+e.message); }
+  document.getElementById('loading-overlay').classList.remove('hidden');
+  document.getElementById('loading-overlay').innerHTML = '<div class="loader-brand">bleuface</div><div class="loader-ring"></div><div class="loader-text">Refreshing data…</div>';
+  try{ await loadData(); }catch(e){ console.error(e); alert('Failed to refresh: '+e.message); document.getElementById('loading-overlay').classList.add('hidden'); }
 }
 
 /* ─── COMPUTE METRICS ────────────────────────────────── */
