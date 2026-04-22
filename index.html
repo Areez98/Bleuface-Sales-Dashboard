@@ -567,15 +567,18 @@ tbody tr:last-child td{border-bottom:none}
 <!--  JAVASCRIPT                                         -->
 <!-- ═══════════════════════════════════════════════════ -->
 <script>
-/* ╔═══════════════════════════════════════════════════╗
-   ║  CONFIGURATION — edit these URLs to point to your  ║
-   ║  published Google Sheets tabs.                      ║
-   ╚═══════════════════════════════════════════════════╝ */
+/* ╔══════════════════════════════════════════════════════╗
+   ║  CONFIGURATION — All Google Sheets tab URLs          ║
+   ╚══════════════════════════════════════════════════════╝ */
+const BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?single=true&output=csv&gid=';
 const CONFIG = {
-  ORDERS_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=1948584787&single=true&output=csv',
-  // Set these to your published sheet URLs once you publish the Expenses & Products tabs:
-  EXPENSES_CSV: null, // e.g. '...pub?gid=YOUR_EXPENSES_GID&single=true&output=csv'
-  PRODUCTS_CSV: null, // e.g. '...pub?gid=YOUR_PRODUCTS_GID&single=true&output=csv'
+  ORDERS_CSV:     BASE + '848015419',
+  INVOICES_CSV:   BASE + '1850157841',
+  PRODUCTS_CSV:   BASE + '1615991162',
+  EXPENSES_CSV:   BASE + '154789322',
+  DRAWINGS_CSV:   BASE + '1948584787',
+  CATEGORIES_CSV: BASE + '1573398675',
+  COMMISSIONS_CSV:BASE + '1877178879',
   PAYMENT_TERMS_DAYS: 30,
   AUTO_REFRESH_MS: 5 * 60 * 1000,
   LOW_STOCK_THRESHOLD: 0.20,
@@ -722,86 +725,91 @@ let paidState = {};
 try{ paidState = JSON.parse(localStorage.getItem(STORAGE_KEY))||{}; }catch(e){}
 function savePaid(){ localStorage.setItem(STORAGE_KEY,JSON.stringify(paidState)); }
 
-let ORDERS=[], PRODUCTS=[], EXPENSES=[];
+let ORDERS=[], PRODUCTS=[], EXPENSES=[], DRAWINGS=[], LIVE_INVOICES=[];
 const charts = {};
 
 /* ─── CSV FETCH ──────────────────────────────────────── */
 // Google Sheets published CSVs block direct fetch in local/file:// contexts.
 // We try direct first (works on GitHub Pages), then fall through two proxies.
-const PROXIES = [
-  u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-];
+/* ─── FETCH HELPERS ─────────────────────────────────────
+   Direct fetch works on GitHub Pages (GSheets CSV has CORS).
+   Proxies are fallback only. Uses Promise.race for timeouts.  */
+
+function timed(promise, ms){
+  return Promise.race([
+    promise,
+    new Promise((_, r) => setTimeout(() => r(new Error('Timed out after '+ms/1000+'s')), ms))
+  ]);
+}
+
+function setLoadMsg(msg){
+  const el = document.getElementById('load-msg');
+  if(el) el.textContent = msg;
+}
 
 function cleanCSV(text){
-  // Strip BOM (﻿) — Google Sheets often adds this to CSV exports
-  // Also normalise Windows line endings
-  return text.replace(/^﻿/, '').replace(/
-/g, '
-').replace(/
-/g, '
-');
+  if(!text) return '';
+  return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function isCSV(text){
+  const t = text.trim();
+  return t.length > 30 && t.includes(',') && t.split('\n').length > 1;
+}
+
+async function tryFetch(url, ms){
+  const resp = await timed(fetch(url, {cache:'no-store'}), ms);
+  if(!resp.ok) throw new Error('HTTP '+resp.status);
+  const text = await resp.text();
+  if(!isCSV(text)) throw new Error('Not valid CSV');
+  return cleanCSV(text);
 }
 
 async function fetchCSV(url){
-  const bust = url + (url.includes('?')?'&':'?') + '_t=' + Date.now();
-
-  // 1. Try direct (works when hosted on GitHub Pages / any real server)
-  try {
-    const r = await fetch(bust, {signal: AbortSignal.timeout(8000)});
-    if(r.ok){ const t = await r.text(); if(t.trim().length > 10) return cleanCSV(t); }
-  } catch(_){}
-
-  // 2. Try each CORS proxy in turn
-  for(const proxy of PROXIES){
-    try{
-      const r = await fetch(proxy(url), {signal: AbortSignal.timeout(10000)});
-      if(r.ok){ const t = await r.text(); if(t.trim().length > 10) return cleanCSV(t); }
-    } catch(_){}
+  const ATTEMPTS = [
+    {label:'Connecting…',            fn:()=>tryFetch(url, 15000)},
+    {label:'Retrying direct…',       fn:()=>tryFetch(url, 15000)},
+    {label:'Via proxy (corsproxy)…', fn:()=>tryFetch('https://corsproxy.io/?url='+encodeURIComponent(url), 18000)},
+    {label:'Via proxy (allorigins)…',fn:()=>tryFetch('https://api.allorigins.win/raw?url='+encodeURIComponent(url), 18000)},
+    {label:'Via proxy (codetabs)…',  fn:()=>tryFetch('https://api.codetabs.com/v1/proxy/?quest='+encodeURIComponent(url), 18000)},
+  ];
+  for(const {label, fn} of ATTEMPTS){
+    setLoadMsg(label);
+    try{ const t=await fn(); console.log('Loaded via',label); return t; }
+    catch(e){ console.warn('Failed:',label,'→',e.message); }
   }
-
-  throw new Error('All fetch attempts failed. Check the sheet is published: File → Share → Publish to web → select Orders sheet → CSV.');
+  throw new Error('__MANUAL__');
 }
-
-/* Handle both Excel serial numbers AND formatted date strings */
+/* ─── CSV PARSERS ────────────────────────────────────── */
 function parseFlexDate(val){
   if(val == null || val === '') return null;
   const n = parseFloat(val);
-  // Excel serial (40000-70000 covers 2009-2091)
   if(!isNaN(n) && n > 40000 && n < 70000) return excelToDate(n);
   if(typeof val === 'string' && val.trim()){
     const s = val.trim();
-    // ISO: YYYY-MM-DD
-    if(/^\d{4}-\d{2}-\d{2}/.test(s)){ const d=new Date(s); if(!isNaN(d))return d; }
-    // US: M/D/YYYY or MM/DD/YYYY
+    if(/^\d{4}-\d{2}-\d{2}/.test(s)){ const d=new Date(s); if(!isNaN(d)) return d; }
     if(/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)){
-      const [m,d,y]=s.split('/').map(Number);
-      const dt=new Date(y,m-1,d); if(!isNaN(dt))return dt;
+      const [m,d,y] = s.split('/').map(Number);
+      const dt = new Date(y, m-1, d); if(!isNaN(dt)) return dt;
     }
-    // UK: DD/MM/YYYY
     if(/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s)){
-      const parts=s.split('/');
-      if(parts.length===3){
-        const dt=new Date(`${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`);
-        if(!isNaN(dt))return dt;
+      const p = s.split('/');
+      if(p.length === 3){
+        const dt = new Date(p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'));
+        if(!isNaN(dt)) return dt;
       }
     }
-    // Generic fallback
-    const d=new Date(s); if(!isNaN(d.getTime()))return d;
+    const d = new Date(s); if(!isNaN(d.getTime())) return d;
   }
   return null;
 }
 
-/* Find a field value with flexible key matching (handles BOM, extra spaces, case) */
 function col(row, ...names){
-  for(const name of names){
-    if(row[name] !== undefined) return row[name];
-  }
-  // Fallback: strip BOM/spaces from all keys, try again
+  for(const name of names){ if(row[name] !== undefined) return row[name]; }
   const keys = Object.keys(row);
   for(const name of names){
     const clean = name.trim().toLowerCase();
-    const found = keys.find(k => k.replace(/^﻿/,'').trim().toLowerCase() === clean);
+    const found = keys.find(k => k.replace(/^\uFEFF/,'').trim().toLowerCase() === clean);
     if(found !== undefined) return row[found];
   }
   return undefined;
@@ -814,129 +822,176 @@ function parseOrdersCSV(text){
     header: true,
     skipEmptyLines: true,
     dynamicTyping: false,
-    transformHeader: h => h.replace(/^﻿/, '').trim(),
+    transformHeader: h => h.replace(/^\uFEFF/,'').trim(),
   });
-
   if(data.length === 0){
-    console.error('CSV parse returned 0 rows. Errors:', errors);
-    console.error('Raw text preview:', text.slice(0, 300));
-    throw new Error('CSV fetched but 0 rows found. Raw preview: ' + text.slice(0, 120));
+    console.error('PapaParse errors:', errors);
+    console.error('Text preview:', text.slice(0, 400));
+    throw new Error('CSV parsed but found 0 rows. Preview: ' + text.slice(0, 100));
   }
-
-  // Log actual headers so we can debug column-name mismatches
   const actualHeaders = Object.keys(data[0]);
-  console.log('CSV rows:', data.length, '| Headers found:', actualHeaders.join(' | '));
-
-  // Show headers in status bar for easy debugging
+  console.log('Headers:', actualHeaders.join(' | '));
   const sb = document.getElementById('data-status-bar');
   if(sb) sb.setAttribute('data-headers', actualHeaders.join(', '));
 
-  return data.map(r => {
-    const orderRef = String(col(r,'Order Ref','order_ref','OrderRef','Invoice','invoice') || '').trim();
-    const qty      = parseNum(col(r,'Quantity','quantity','Qty','qty'));
-    const lNet     = parseNum(col(r,'Line Net','line_net','LineNet','Net','net'));
-    const lGross   = parseNum(col(r,'Line Gross','line_gross','LineGross','Gross','gross'));
-    const lComm    = parseNum(col(r,'Line Commission','line_commission','Commission','commission'));
-    const uCost    = parseNum(col(r,'Unit Cost','unit_cost','UnitCost','Cost Per Unit'));
-    const lCost    = parseNum(col(r,'Line Cost','line_cost','LineCost','Total Cost'));
-    const lProfit  = parseNum(col(r,'Line Profit','line_profit','LineProfit','Profit'));
-    const isFOCVal = String(col(r,'Is FOC','is_foc','IsFOC','FOC') || '').toUpperCase().trim();
-
-    return {
-      orderRef,
-      orderDate:    parseFlexDate(col(r,'Order Date','order_date','OrderDate','Date','date')),
-      customer:     String(col(r,'Customer','customer','Client','client') || '').trim(),
-      product:      String(col(r,'Product','product','SKU','sku','Item') || '').trim(),
-      barcode:      normBarcode(String(col(r,'Barcode','barcode','SKU Code') || '')),
-      category:     String(col(r,'Category','category','Cat') || '').trim(),
-      quantity:     qty,
-      productPrice: parseNum(col(r,'Product Price','product_price','Price','price')),
-      commPct:      parseNum(col(r,'Commission %','commission_pct','Comm %','Comm%')),
-      lineCommission: lComm,
-      lineNet:      lNet,
-      lineGross:    lGross,
-      unitCost:     uCost,
-      lineCost:     lCost,
-      lineProfit:   lProfit,
-      isFOC:        isFOCVal === 'TRUE' || isFOCVal === '1' || isFOCVal === 'YES',
-    };
-  }).filter(r => r.orderRef && r.orderRef !== 'Order Ref' && r.orderRef !== '');
+  return data.map(r => ({
+    orderRef:       String(col(r,'Order Ref','OrderRef','Invoice') || '').trim(),
+    orderDate:      parseFlexDate(col(r,'Order Date','OrderDate','Date')),
+    customer:       String(col(r,'Customer','Client') || '').trim(),
+    product:        String(col(r,'Product','SKU','Item') || '').trim(),
+    barcode:        normBarcode(String(col(r,'Barcode','barcode') || '')),
+    category:       String(col(r,'Category','Cat') || '').trim(),
+    quantity:       parseNum(col(r,'Quantity','Qty','qty')),
+    productPrice:   parseNum(col(r,'Product Price','Price')),
+    commPct:        parseNum(col(r,'Commission %','Comm %')),
+    lineCommission: parseNum(col(r,'Line Commission','Commission')),
+    lineNet:        parseNum(col(r,'Line Net','Net')),
+    lineGross:      parseNum(col(r,'Line Gross','Gross')),
+    unitCost:       parseNum(col(r,'Unit Cost','Unit Cost (PKR)')),
+    lineCost:       parseNum(col(r,'Line Cost','Cost')),
+    lineProfit:     parseNum(col(r,'Line Profit','Profit')),
+    isFOC:          String(col(r,'Is FOC','FOC') || '').toUpperCase().trim() === 'TRUE',
+  })).filter(r => r.orderRef && r.orderRef !== 'Order Ref');
 }
 
 function parseProductsCSV(text){
-  const {data} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:true});
+  const {data} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:true,
+    transformHeader: h => h.replace(/^\uFEFF/,'').trim()});
   return data.map(r=>({
     product:     String(r['Product']||'').trim(),
-    barcode:     normBarcode(String(r['Barcode (normalised)']||'')),
-    purchasedQty:+r['Purchased Qty']||0,
-    unitCost:    +r['Unit Cost (PKR)']||0,
+    barcode:     normBarcode(String(r['Barcode (normalised)']||r['Barcode']||'')),
+    purchasedQty:parseNum(r['Purchased Qty']),
+    unitCost:    parseNum(r['Unit Cost (PKR)']||r['Unit Cost']),
   }));
 }
 
 function parseExpensesCSV(text){
-  const {data} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:true});
+  const {data} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:false,
+    transformHeader: h => h.replace(/^\uFEFF/,'').trim()});
   return data.map(r=>({
-    date:     new Date(r['Date']),
-    category: String(r['Category']||'').trim(),
-    description:String(r['Description']||'').trim(),
-    amount:   +r['Amount (PKR)']||0,
-  })).filter(r=>r.description&&r.amount);
+    date:        parseFlexDate(r['Date']),
+    category:    String(r['Category']||'').trim(),
+    description: String(r['Description']||'').trim(),
+    amount:      parseNum(r['Amount (PKR)']||r['Amount']),
+  })).filter(r=>r.description && r.amount > 0);
+}
+
+function parseDrawingsCSV(text){
+  const {data} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:false,
+    transformHeader: h => h.replace(/^﻿/,'').trim()});
+  return data.map(r=>({
+    date:        parseFlexDate(r['Date']),
+    category:    'Drawings',
+    description: String(r['Description']||r['Type of Expense']||'Drawing').trim(),
+    amount:      parseNum(r['Amount (PKR)']||r['Amount']),
+  })).filter(r=>r.amount > 0);
+}
+
+function parseInvoicesCSV(text){
+  const {data} = Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:false,
+    transformHeader: h => h.replace(/^﻿/,'').trim()});
+  return data.map(r=>({
+    orderRef:   String(col(r,'Order Ref','Invoice') || '').trim(),
+    customer:   String(r['Customer']||'').trim(),
+    issueDate:  parseFlexDate(r['Issue Date']||r['Issued']),
+    dueDate:    parseFlexDate(r['Due Date']||r['Due']),
+    net:        parseNum(r['Net (PKR)']||r['Net']),
+    gross:      parseNum(r['Gross (PKR)']||r['Gross']),
+    cost:       parseNum(r['Cost (PKR)']||r['Cost']),
+    profit:     parseNum(r['Profit (PKR)']||r['Profit']),
+    units:      parseNum(r['Units']),
+    sheetPaid:  String(r['Paid?']||'').toUpperCase().trim() === 'TRUE',
+    paidDate:   String(r['Paid Date']||'').trim(),
+    isFOC:      String(r['FOC Order?']||'').toUpperCase().trim() === 'TRUE',
+  })).filter(r=>r.orderRef && r.orderRef !== 'Order Ref');
 }
 
 /* ─── MAIN LOAD ──────────────────────────────────────── */
 async function loadData(){
-  document.getElementById('loading-overlay').classList.remove('hidden');
+  const overlay = document.getElementById('loading-overlay');
+  overlay.innerHTML = '<div class="loader-brand">bleuface</div><div class="loader-ring"></div><div class="loader-text" id="load-msg">Loading all sheets…</div>';
+  overlay.classList.remove('hidden');
 
-  // Orders (required)
-  const ordersText = await fetchCSV(CONFIG.ORDERS_CSV);
-  ORDERS = parseOrdersCSV(ordersText);
-
-  // Products (optional, fallback to embedded)
-  if(CONFIG.PRODUCTS_CSV){
-    try{ PRODUCTS = parseProductsCSV(await fetchCSV(CONFIG.PRODUCTS_CSV)); }
-    catch(e){ PRODUCTS = EMBEDDED_PRODUCTS; }
-  } else { PRODUCTS = EMBEDDED_PRODUCTS; }
-
-  // Expenses (optional, fallback to embedded)
-  if(CONFIG.EXPENSES_CSV){
-    try{ EXPENSES = parseExpensesCSV(await fetchCSV(CONFIG.EXPENSES_CSV)); }
-    catch(e){ EXPENSES = EMBEDDED_EXPENSES.map(e=>({...e,date:new Date(e.date)})); }
-  } else { EXPENSES = EMBEDDED_EXPENSES.map(e=>({...e,date:new Date(e.date)})); }
-
-  const rowCount = ORDERS.length;
-  console.log('Parsed orders:', rowCount);
-  if(rowCount === 0){
-    throw new Error('CSV fetched but 0 rows parsed. Check column headers match the Orders sheet exactly.');
-  }
   try {
+    // ── Step 1: Orders is critical — fetch first
+    setLoadMsg('Loading Orders…');
+    const ordersText = await fetchCSV(CONFIG.ORDERS_CSV);
+    ORDERS = parseOrdersCSV(ordersText);
+    if(ORDERS.length === 0)
+      throw new Error('Orders sheet parsed 0 rows. Check the Orders tab is published correctly.');
+
+    // ── Step 2: Fetch all other tabs in parallel
+    setLoadMsg('Loading Products, Expenses, Drawings & Invoices…');
+    const [prodRes, expRes, drawRes, invRes] = await Promise.allSettled([
+      fetchCSV(CONFIG.PRODUCTS_CSV),
+      fetchCSV(CONFIG.EXPENSES_CSV),
+      fetchCSV(CONFIG.DRAWINGS_CSV),
+      fetchCSV(CONFIG.INVOICES_CSV),
+    ]);
+
+    // Products
+    if(prodRes.status === 'fulfilled'){
+      try{ PRODUCTS = parseProductsCSV(prodRes.value); console.log('✓ Products:', PRODUCTS.length); }
+      catch(e){ console.warn('Products parse failed:', e.message); PRODUCTS = EMBEDDED_PRODUCTS; }
+    } else { console.warn('Products fetch failed:', prodRes.reason?.message); PRODUCTS = EMBEDDED_PRODUCTS; }
+
+    // Expenses
+    if(expRes.status === 'fulfilled'){
+      try{ EXPENSES = parseExpensesCSV(expRes.value); console.log('✓ Expenses:', EXPENSES.length); }
+      catch(e){ console.warn('Expenses parse failed:', e.message); EXPENSES = EMBEDDED_EXPENSES.map(e=>({...e,date:new Date(e.date)})); }
+    } else { console.warn('Expenses fetch failed:', expRes.reason?.message); EXPENSES = EMBEDDED_EXPENSES.map(e=>({...e,date:new Date(e.date)})); }
+
+    // Drawings
+    if(drawRes.status === 'fulfilled'){
+      try{ DRAWINGS = parseDrawingsCSV(drawRes.value); console.log('✓ Drawings:', DRAWINGS.length); }
+      catch(e){ console.warn('Drawings parse failed:', e.message); DRAWINGS = []; }
+    } else { console.warn('Drawings fetch failed:', drawRes.reason?.message); DRAWINGS = []; }
+
+    // Invoices (live paid status from sheet)
+    if(invRes.status === 'fulfilled'){
+      try{ LIVE_INVOICES = parseInvoicesCSV(invRes.value); console.log('✓ Invoices:', LIVE_INVOICES.length);
+        // Seed paidState from sheet (localStorage overrides take precedence)
+        LIVE_INVOICES.forEach(inv => {
+          if(inv.sheetPaid && !paidState[inv.orderRef])
+            paidState[inv.orderRef] = {paid:true, date: inv.paidDate||''};
+        });
+      } catch(e){ console.warn('Invoices parse failed:', e.message); }
+    }
+
+    setLoadMsg('Rendering dashboard…');
     render();
+    overlay.classList.add('hidden');
+
+    const rowCount = ORDERS.length;
+    document.getElementById('hdr-refresh').textContent =
+      rowCount.toLocaleString() + ' rows · ' + new Date().toLocaleTimeString();
+
+    const sb = document.getElementById('data-status-bar');
+    const hdrs = (sb && sb.getAttribute('data-headers')) || '';
+    const hasDates   = ORDERS.some(o => o.orderDate instanceof Date && !isNaN(o.orderDate));
+    const hasRevenue = ORDERS.some(o => o.lineNet > 0);
+    sb.innerHTML =
+      '<b>✓ ' + rowCount + ' order rows</b>'
+      + ' · ' + PRODUCTS.length + ' products'
+      + ' · ' + EXPENSES.length + ' expenses'
+      + ' · ' + DRAWINGS.length + ' drawings'
+      + (hasDates   ? '' : ' · <span style="color:var(--orange)">⚠ dates not parsed</span>')
+      + (hasRevenue ? '' : ' · <span style="color:var(--red)">⚠ no revenue</span>')
+      + (hdrs ? '<details style="display:inline;margin-left:10px"><summary style="cursor:pointer;color:var(--muted)">columns ▾</summary><div style="color:var(--dim);font-size:10px;margin-top:4px">' + hdrs + '</div></details>' : '');
+    sb.style.display = 'block';
+
   } catch(err){
-    console.error('Render error:', err);
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    document.getElementById('loading-overlay').innerHTML = `
-      <div class="loader-brand">bleuface</div>
-      <div style="color:var(--red);font-size:13px;text-align:center;max-width:460px;line-height:1.8;padding:0 20px">
-        <b>Data loaded but render failed</b><br/>
-        <code style="color:var(--muted);font-size:11px">\${err.message}</code>
-      </div>
-      <button class="btn-refresh" onclick="location.reload()" style="margin-top:16px">↺ Retry</button>
-    `;
-    return;
+    console.error('loadData error:', err);
+    overlay.classList.remove('hidden');
+    overlay.innerHTML =
+      '<div class="loader-brand">bleuface</div>'
+      + '<div style="color:var(--red);font-weight:700;font-size:14px;margin-bottom:12px">Failed to load</div>'
+      + '<div style="background:var(--surface);border:1px solid rgba(255,77,92,.3);border-radius:10px;padding:16px 20px;max-width:480px;font-size:12px;line-height:1.8;color:var(--muted)">'
+      + err.message.replace(/
+/g,'<br/>')
+      + '</div>'
+      + '<button class="btn-refresh" onclick="location.reload()" style="margin-top:18px">↺ Retry</button>';
   }
-  document.getElementById('loading-overlay').classList.add('hidden');
-  document.getElementById('hdr-refresh').textContent = rowCount.toLocaleString()+' rows · Updated '+new Date().toLocaleTimeString();
-  const sb = document.getElementById('data-status-bar');
-  const sampleDate = ORDERS.length>0&&ORDERS[0].orderDate ? ORDERS[0].orderDate.toLocaleDateString() : '⚠ no dates parsed';
-  const hasDates    = ORDERS.some(o=>o.orderDate instanceof Date&&!isNaN(o.orderDate));
-  const hasRevenue  = ORDERS.some(o=>o.lineNet>0);
-  const uniqueCust  = new Set(ORDERS.map(o=>o.customer)).size;
-  const uniqueProd  = new Set(ORDERS.map(o=>o.product)).size;
-  const hdrs        = sb.getAttribute('data-headers')||'(headers unavailable)';
-  sb.innerHTML = '<b>✓ '+rowCount+' rows loaded</b> · '+uniqueCust+' customers · '+uniqueProd+' SKUs'
-    +(hasDates?' · dates OK':' · <span style="color:var(--orange)">⚠ date parse failed</span>')
-    +(hasRevenue?' · revenue OK':' · <span style="color:var(--red)">⚠ no revenue found — check column names</span>')
-    +'<details style="display:inline;margin-left:12px"><summary style="cursor:pointer;color:var(--muted)">show columns</summary><div style="margin-top:4px;color:var(--muted);word-break:break-all">'+hdrs+'</div></details>';
-  sb.style.display = 'block';
 }
 
 async function reloadData(){
@@ -1079,11 +1134,11 @@ function computeMetrics(){
   const deadStockSKUs = inventoryRows.filter(r=>r.isDead);
   const avgDaysStock = inventoryRows.filter(r=>r.daysOfStock!=null&&isFinite(r.daysOfStock)).reduce((s,r,_,a)=>s+r.daysOfStock/a.length,0);
 
-  // ── Expenses (exclude drawings for opex)
-  const opexRows = EXPENSES.filter(e=>e.category!=='Drawings');
-  const drawingsRows = EXPENSES.filter(e=>e.category==='Drawings');
-  const totalOpex = opexRows.reduce((s,e)=>s+e.amount,0);
-  const totalDrawings = drawingsRows.reduce((s,e)=>s+e.amount,0);
+  // ── Expenses — EXPENSES is pure opex, DRAWINGS is separate
+  const opexRows    = EXPENSES;
+  const drawingsRows= DRAWINGS;
+  const totalOpex   = opexRows.reduce((s,e)=>s+e.amount,0);
+  const totalDrawings=drawingsRows.reduce((s,e)=>s+e.amount,0);
   const totalExpenses = totalOpex+totalDrawings;
   const grossProfit = totalProfit;
   const netProfit = grossProfit - totalOpex - totalDrawings;
@@ -1097,13 +1152,13 @@ function computeMetrics(){
 
   // Expense by category
   const expCatMap = {};
-  opexRows.forEach(e=>{
+  EXPENSES.forEach(e=>{
     expCatMap[e.category]=(expCatMap[e.category]||0)+e.amount;
   });
 
   // Monthly expenses for trend
   const expMonthMap = {};
-  EXPENSES.filter(e=>e.category!=='Drawings').forEach(e=>{
+  EXPENSES.forEach(e=>{
     const d=e.date instanceof Date&&!isNaN(e.date)?e.date:new Date(e.date);
     const mk=monthKey(d);
     if(mk) expMonthMap[mk]=(expMonthMap[mk]||0)+e.amount;
@@ -1621,7 +1676,7 @@ function renderFinanceSection(M){
 
   // Expense table
   const expFilter = $('exp-cat-filters');
-  const allCats = ['All',...new Set(EXPENSES.filter(e=>e.category!=='Drawings').map(e=>e.category))];
+  const allCats = ['All',...new Set(EXPENSES.map(e=>e.category))];
   let activeExpCat = 'All';
   expFilter.innerHTML = allCats.map(c=>`<button class="fbtn ${c==='All'?'active':''}" data-cat="${c}">${c}</button>`).join('');
   expFilter.querySelectorAll('.fbtn').forEach(b=>{
@@ -1636,7 +1691,7 @@ function renderFinanceSection(M){
 }
 
 function renderExpTable(M, cat){
-  const rows = EXPENSES.filter(e=>e.category!=='Drawings'&&(cat==='All'||e.category===cat))
+  const rows = EXPENSES.filter(e=>(cat==='All'||e.category===cat))
     .sort((a,b)=>(b.date||0)-(a.date||0));
   const tbody = document.querySelector('#tbl-exp tbody');
   tbody.innerHTML = rows.map(e=>{
@@ -1701,12 +1756,9 @@ function $(id){ return document.getElementById(id); }
 /* ─── AUTO REFRESH ───────────────────────────────────── */
 setTimeout(()=>setInterval(()=>{ reloadData(); },CONFIG.AUTO_REFRESH_MS), CONFIG.AUTO_REFRESH_MS);
 
-/* ─── BOOT ─────────────────────────────────────────── */
-loadData().catch(e=>{
-  console.error(e);
-  const ol=document.getElementById("loading-overlay");
-  ol.innerHTML="<div class='loader-brand'>bleuface</div><div style='color:var(--red);font-size:13px;text-align:center;max-width:460px;line-height:1.8;padding:0 20px'><b>Could not load data</b><br/><span style='color:var(--muted);font-size:11px'>"+e.message+"</span></div><div style='background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 24px;max-width:460px;font-size:12px;line-height:1.9;color:var(--muted);'><b style='color:var(--text)'>Quick fix checklist:</b><br/>1. Open Google Sheets → <b style='color:var(--cyan)'>File → Share → Publish to web</b><br/>2. Select <b>Orders</b> sheet, format <b>CSV</b>, click <b>Publish</b><br/>3. Copy the URL into the <code style='color:var(--gold)'>ORDERS_CSV</code> field in CONFIG<br/>4. If opening locally, host on <b>GitHub Pages</b> or run a local server instead.</div><button class='btn-refresh' onclick='location.reload()' style='margin-top:16px'>↺ Retry</button>";
-});
+/* ─── BOOT ───────────────────────────────────────────── */
+loadData(); // errors handled internally — no outer catch needed
+
 </script>
 </body>
 </html>
