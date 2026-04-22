@@ -3,95 +3,59 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Bleuface • Ultimate B2B Command Center</title>
+<title>Bleuface • Command Center</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 <style>
-  :root{--bleu:#00C0FF;--bleu-dark:#007AA8;--ink:#0B1220;--soft:#F2FBFF;}
-  html,body{font-family:'Inter',sans-serif;background:#F8FAFC;color:var(--ink);scroll-behavior:smooth;}
+  :root{--bleu:#00C0FF;--ink:#0B1220;}
+  html,body{font-family:'Inter',sans-serif;background:#F8FAFC;color:var(--ink);}
   .brand-grad{background:linear-gradient(135deg,#00C0FF 0%,#007AA8 100%);}
-  .kpi-card{background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.02);}
+  .kpi-card{background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;}
   .kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:700;}
-  .kpi-value{font-size:26px;font-weight:900;color:var(--ink);margin-top:4px;}
+  .kpi-value{font-size:26px;font-weight:900;margin-top:4px;}
   .panel{background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:24px;margin-bottom:24px;}
-  .tbl{width:100%;font-size:13px;border-collapse:collapse;}
-  .tbl thead th{background:#F8FAFC;text-align:left;padding:12px;border-bottom:2px solid #E2E8F0;font-weight:700;color:#475569;}
-  .tbl tbody td{padding:12px;border-bottom:1px solid #F1F5F9;}
   .pill{padding:3px 10px;border-radius:999px;font-size:10px;font-weight:800;text-transform:uppercase;}
-  .pill-stock{background:#E0F2FE;color:#0369A1;}
   .pill-paid{background:#DCFCE7;color:#166534;}
   .pill-unpaid{background:#FEE2E2;color:#991B1B;}
   #loader{position:fixed;inset:0;background:white;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:99;}
-  .spinner{width:45px;height:45px;border:5px solid #F3F4F6;border-top:5px solid #00C0FF;border-radius:50%;animation:spin 1s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
 
-<div id="loader">
-  <div class="spinner"></div>
-  <p class="mt-4 font-black text-gray-400 tracking-widest uppercase text-sm">Bleuface Deep Sync...</p>
-</div>
+<div id="loader"><p class="font-black text-blue-500 animate-pulse">CLEANING DATA...</p></div>
 
 <header class="brand-grad text-white px-8 py-12">
-  <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-    <div>
-      <p class="text-xs font-bold tracking-[0.3em] uppercase opacity-70">Internal Operations Portal</p>
-      <h1 class="text-5xl font-black mt-2 tracking-tight">B2B Business Intelligence</h1>
-    </div>
-    <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
-      <p id="last-update" class="text-sm font-bold opacity-100">Synchronizing datasets...</p>
-      <p class="text-[10px] uppercase tracking-wider opacity-60 mt-1">Real-time Google Sheets Link</p>
-    </div>
+  <div class="max-w-7xl mx-auto">
+    <p class="text-xs font-bold tracking-[0.3em] uppercase opacity-70">Bleuface Operations</p>
+    <h1 class="text-5xl font-black mt-2 tracking-tight">Business Intelligence</h1>
   </div>
 </header>
 
 <main class="max-w-7xl mx-auto p-8 -mt-8">
   <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-    <div class="kpi-card"><div class="kpi-label">Net Sales (Take-Home)</div><div class="kpi-value" id="kpi-net">Rs 0</div></div>
-    <div class="kpi-card"><div class="kpi-label">Gross Margin Share</div><div class="kpi-value text-blue-500" id="kpi-comm">Rs 0</div></div>
-    <div class="kpi-card"><div class="kpi-label">Operating Profit</div><div class="kpi-value text-green-600" id="kpi-profit">Rs 0</div></div>
-    <div class="kpi-card"><div class="kpi-label">Receivables (Unpaid)</div><div class="kpi-value text-red-500" id="kpi-unpaid">Rs 0</div></div>
+    <div class="kpi-card"><div class="kpi-label">Net Sales</div><div class="kpi-value" id="kpi-net">Rs 0</div></div>
+    <div class="kpi-card"><div class="kpi-label">Est. Profit</div><div class="kpi-value text-green-600" id="kpi-profit">Rs 0</div></div>
+    <div class="kpi-card"><div class="kpi-label">Units Sold</div><div class="kpi-value" id="kpi-units">0</div></div>
+    <div class="kpi-card"><div class="kpi-label">Unpaid</div><div class="kpi-value text-red-500" id="kpi-unpaid">Rs 0</div></div>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-    <div class="lg:col-span-2 space-y-8">
+    <div class="lg:col-span-2">
+      <div class="panel"><canvas id="mainChart" height="120"></canvas></div>
       <div class="panel">
-        <h3 class="font-black text-gray-800 uppercase tracking-wider text-sm mb-6 flex justify-between">
-          <span>Revenue Growth Trend</span>
-          <span class="text-blue-500">Monthly Net</span>
-        </h3>
-        <canvas id="mainChart" height="120"></canvas>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div class="panel">
-          <h3 class="font-black text-gray-800 uppercase tracking-wider text-sm mb-6">Sales by Category</h3>
-          <canvas id="categoryChart" height="200"></canvas>
-        </div>
-        <div class="panel">
-          <h3 class="font-black text-gray-800 uppercase tracking-wider text-sm mb-6">Top Partners</h3>
-          <div id="top-customers" class="space-y-4"></div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3 class="font-black text-gray-800 uppercase tracking-wider text-sm mb-6">Live Invoice Ledger</h3>
-        <div class="overflow-x-auto">
-          <table class="tbl" id="invoice-table">
-            <thead><tr><th>Reference</th><th>Partner</th><th>Amount</th><th>Status</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <h3 class="font-bold mb-4">Latest Invoices</h3>
+        <table class="w-full text-sm" id="invoice-table">
+          <thead class="text-left border-b-2"><tr><th class="pb-2">Ref</th><th class="pb-2">Partner</th><th class="pb-2">Net</th><th class="pb-2">Status</th></tr></thead>
+          <tbody class="divide-y"></tbody>
+        </table>
       </div>
     </div>
-
     <div class="lg:col-span-1">
-      <div class="panel sticky top-8">
-        <h3 class="font-black text-gray-800 uppercase tracking-wider text-sm mb-6">SKU Performance & Stock</h3>
-        <div id="top-products" class="space-y-6"></div>
-      </div>
+        <div class="panel">
+            <h3 class="font-bold mb-4">Top Products</h3>
+            <div id="top-products" class="space-y-4"></div>
+        </div>
     </div>
   </div>
 </main>
@@ -100,79 +64,82 @@
 const URLS = {
   orders: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=848015419&single=true&output=csv",
   invoices: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=1850157841&single=true&output=csv",
-  products: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=1615991162&single=true&output=csv",
-  categories: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=1573398675&single=true&output=csv",
-  commissions: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=1877178879&single=true&output=csv"
+  products: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=1615991162&single=true&output=csv"
 };
 
-async function init() {
-  const fetchCSV = (u) => new Promise(res => Papa.parse(u, {download:true, header:true, dynamicTyping:true, complete:res}));
-  const data = await Promise.all(Object.values(URLS).map(fetchCSV));
-  render(data[0].data, data[1].data, data[2].data, data[3].data, data[4].data);
+// Helper to turn "Rs 1,200" into 1200
+function clean(val) {
+  if (val === null || val === undefined) return 0;
+  const str = String(val).replace(/[^\d.-]/g, '');
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
 }
 
-function render(orders, invoices, products, categories, commissions) {
-  let net=0, comm=0, profit=0, unpaid=0;
-  let skuSales={}, skuQtySold={}, monthly={}, catSales={}, custSales={};
+async function init() {
+  const fetchCSV = (u) => new Promise(res => Papa.parse(u, {download:true, header:true, complete:res}));
+  const data = await Promise.all(Object.values(URLS).map(fetchCSV));
+  render(data[0].data, data[1].data, data[2].data);
+}
+
+function render(orders, invoices, products) {
+  let net=0, units=0, profit=0, unpaid=0;
+  let skuSales={}, skuQty={}, monthly={};
   
   const productInfo = {};
-  products.forEach(p => { productInfo[p['Product']] = { cost: p['Unit Cost (PKR)'] || 0, total: p['Purchased Qty'] || 0 }; });
+  products.forEach(p => { productInfo[p['Product']] = clean(p['Unit Cost (PKR)']); });
 
   orders.forEach(r => {
-    if(!r['Order Date']) return;
-    const lineNet = r['Line Net'] || 0;
-    const lineComm = r['Line Commission'] || 0;
-    const qty = r['Quantity'] || 0;
-    const cost = (productInfo[r['Product']]?.cost || 0) * qty;
+    if(!r['Order Date'] || !r['Product']) return;
+    const lineNet = clean(r['Line Net']);
+    const qty = clean(r['Quantity']);
+    const cost = (productInfo[r['Product']] || 0) * qty;
 
     net += lineNet;
-    comm += lineComm;
+    units += qty;
     profit += (lineNet - cost);
 
-    const m = r['Order Date'].substring(0, 7);
+    const m = String(r['Order Date']).substring(0, 7);
     monthly[m] = (monthly[m] || 0) + lineNet;
     skuSales[r['Product']] = (skuSales[r['Product']] || 0) + lineNet;
-    skuQtySold[r['Product']] = (skuQtySold[r['Product']] || 0) + qty;
-    catSales[r['Category']] = (catSales[r['Category']] || 0) + lineNet;
-    custSales[r['Customer']] = (custSales[r['Customer']] || 0) + lineNet;
+    skuQty[r['Product']] = (skuQty[r['Product']] || 0) + qty;
   });
 
-  invoices.forEach(inv => { if(inv['Paid?'] === false || inv['Paid?'] === 'FALSE') unpaid += (inv['Net (PKR)'] || 0); });
+  invoices.forEach(inv => {
+    const isPaid = String(inv['Paid?']).toUpperCase() === 'TRUE';
+    if(!isPaid && inv['Net (PKR)']) unpaid += clean(inv['Net (PKR)']);
+  });
 
-  // Update UI
   document.getElementById('kpi-net').innerText = 'Rs ' + Math.round(net).toLocaleString();
-  document.getElementById('kpi-comm').innerText = 'Rs ' + Math.round(comm).toLocaleString();
   document.getElementById('kpi-profit').innerText = 'Rs ' + Math.round(profit).toLocaleString();
+  document.getElementById('kpi-units').innerText = Math.round(units).toLocaleString();
   document.getElementById('kpi-unpaid').innerText = 'Rs ' + Math.round(unpaid).toLocaleString();
-  document.getElementById('last-update').innerText = 'Last Sync: ' + new Date().toLocaleTimeString();
 
-  // Charts
+  const sortedSkus = Object.entries(skuSales).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  document.getElementById('top-products').innerHTML = sortedSkus.map(([n,v])=>`
+    <div class="flex justify-between text-sm border-b pb-2">
+      <span class="font-medium">${n}</span>
+      <span class="font-bold">Rs ${Math.round(v).toLocaleString()}</span>
+    </div>
+  `).join('');
+
+  const tableBody = document.querySelector('#invoice-table tbody');
+  tableBody.innerHTML = invoices.filter(i=>i['Order Ref']).slice(0,8).map(inv => `
+    <tr class="py-2">
+      <td class="py-3 font-mono text-gray-400">${inv['Order Ref']}</td>
+      <td>${inv['Customer']}</td>
+      <td class="font-bold">Rs ${Math.round(clean(inv['Net (PKR)'])).toLocaleString()}</td>
+      <td><span class="pill ${String(inv['Paid?']).toUpperCase()==='TRUE'?'pill-paid':'pill-unpaid'}">
+        ${String(inv['Paid?']).toUpperCase()==='TRUE'?'Paid':'Pending'}
+      </span></td>
+    </tr>
+  `).join('');
+
+  const mKeys = Object.keys(monthly).sort();
   new Chart(document.getElementById('mainChart'), {
     type: 'bar',
-    data: { labels: Object.keys(monthly).sort(), datasets: [{ data: Object.keys(monthly).sort().map(k=>monthly[k]), backgroundColor: '#00C0FF', borderRadius: 4 }] },
+    data: { labels: mKeys, datasets: [{ label: 'Revenue', data: mKeys.map(k=>monthly[k]), backgroundColor: '#00C0FF', borderRadius: 4 }] },
     options: { plugins: { legend: { display: false } } }
   });
-
-  new Chart(document.getElementById('categoryChart'), {
-    type: 'doughnut',
-    data: { labels: Object.keys(catSales), datasets: [{ data: Object.values(catSales), backgroundColor: ['#00C0FF', '#007AA8', '#0B1220', '#E2E8F0', '#94A3B8'] }] },
-    options: { plugins: { legend: { position: 'bottom' } }, cutout: '70%' }
-  });
-
-  // Top Products & Partners
-  const topProdDiv = document.getElementById('top-products');
-  topProdDiv.innerHTML = Object.entries(skuSales).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([name, val]) => {
-    const sold = skuQtySold[name] || 0;
-    const remaining = (productInfo[name]?.total || 0) - sold;
-    return `<div class="border-b pb-4 border-gray-100">
-      <div class="flex justify-between font-bold text-sm mb-1"><span>${name}</span><span>Rs ${Math.round(val).toLocaleString()}</span></div>
-      <div class="flex justify-between items-center"><span class="pill pill-stock">${remaining} Left</span><span class="text-[10px] text-gray-400 uppercase font-bold">${sold} Sold</span></div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('top-customers').innerHTML = Object.entries(custSales).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,v])=>`<div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg"><span class="font-bold text-sm">${n}</span><span class="font-black text-blue-600 text-sm">Rs ${Math.round(v).toLocaleString()}</span></div>`).join('');
-
-  document.querySelector('#invoice-table tbody').innerHTML = invoices.slice(0,8).map(inv => `<tr><td class="font-bold text-gray-400">${inv['Order Ref']}</td><td class="font-semibold">${inv['Customer']}</td><td class="font-bold">Rs ${Math.round(inv['Net (PKR)']).toLocaleString()}</td><td><span class="pill ${inv['Paid?']===true||inv['Paid?']==='TRUE'?'pill-paid':'pill-unpaid'}">${inv['Paid?']===true||inv['Paid?']==='TRUE'?'Paid':'Pending'}</span></td></tr>`).join('');
 
   document.getElementById('loader').style.display = 'none';
 }
