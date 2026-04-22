@@ -3,117 +3,131 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Bleuface • B2B Sales Dashboard (Live)</title>
+<title>Bleuface • Live B2B Dashboard</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 <style>
-  :root{--bleu:#00C0FF;--bleu-dark:#007AA8;--ink:#0B1220;--soft:#F2FBFF;--slate:#4A5568;}
-  html,body{font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#F7FAFC;color:var(--ink);}
+  :root{--bleu:#00C0FF;--bleu-dark:#007AA8;--ink:#0B1220;--soft:#F2FBFF;}
+  html,body{font-family:'Inter',sans-serif;background:#F7FAFC;color:var(--ink);scroll-behavior:smooth;}
   .brand-grad{background:linear-gradient(135deg,#00C0FF 0%,#007AA8 100%);}
-  .kpi-card{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:18px;transition:all .15s;}
-  .kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,122,168,.12);}
-  .kpi-label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#718096;font-weight:600;}
-  .kpi-value{font-size:26px;font-weight:800;color:var(--ink);margin-top:6px;}
-  .kpi-sub{font-size:12px;color:#718096;margin-top:2px;}
-  .panel{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:20px;}
-  .panel-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
+  .kpi-card{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:18px;}
+  .kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:700;}
+  .kpi-value{font-size:24px;font-weight:800;color:var(--ink);margin-top:4px;}
+  .panel{background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:24px;}
   .tbl{width:100%;font-size:13px;border-collapse:collapse;}
-  .tbl thead th{background:#F7FAFC;color:#4A5568;font-weight:700;text-align:left;padding:10px 12px;border-bottom:1px solid #E2E8F0;cursor:pointer;user-select:none;position:sticky;top:0;}
-  .tbl thead th:hover{background:#EDF2F7;}
-  .tbl tbody td{padding:9px 12px;border-bottom:1px solid #EDF2F7;}
-  .tbl tbody tr:hover{background:#F7FAFC;}
-  .tbl tbody tr.paid td{color:#94A3B8;}
-  .tbl tbody tr.paid td.amount{text-decoration:line-through;}
-  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;}
-  .pill-active{background:#D1FAE5;color:#065F46;}
-  .pill-risk{background:#FEF3C7;color:#92400E;}
-  .pill-lapsed{background:#FEE2E2;color:#991B1B;}
-  .pill-cat{background:#E0F2FE;color:#075985;}
-  .pill-paid{background:#D1FAE5;color:#065F46;}
-  .pill-overdue{background:#FEE2E2;color:#991B1B;}
-  .pill-due-soon{background:#FEF3C7;color:#92400E;}
-  .pill-upcoming{background:#E0E7FF;color:#3730A3;}
-  .pill-foc{background:#FCE7F3;color:#9D174D;}
-  .num{font-variant-numeric:tabular-nums;text-align:right;}
-  .scroll-panel{max-height:430px;overflow:auto;}
-  .search{width:100%;padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;}
-  .btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;}
-  .btn-primary{background:#00C0FF;color:#fff;}
-  .btn-primary:hover{background:#007AA8;}
-  .btn-ghost{background:#fff;color:#475569;border-color:#E2E8F0;}
-  .btn-ghost:hover{background:#F7FAFC;}
-  .btn-success{background:#1FA67A;color:#fff;}
-  .btn-success:hover{background:#15805C;}
-  .btn-outline-danger{background:#fff;color:#991B1B;border-color:#FECACA;}
-  .btn-outline-danger:hover{background:#FEF2F2;}
-  .filter-btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #E2E8F0;background:#fff;color:#475569;}
-  .filter-btn.active{background:#00C0FF;color:#fff;border-color:#00C0FF;}
-  .alert-banner{border-radius:14px;padding:16px 20px;border:1px solid;}
-  .alert-danger{background:#FEF2F2;border-color:#FECACA;color:#991B1B;}
-  .alert-warn{background:#FFFBEB;border-color:#FDE68A;color:#92400E;}
-  .alert-ok{background:#F0FDF4;border-color:#BBF7D0;color:#166534;}
-  #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; display: flex; justify-content: center; align-items: center; z-index: 9999; font-weight: bold; color: #00C0FF; }
+  .tbl thead th{background:#F8FAFC;text-align:left;padding:12px;border-bottom:2px solid #E2E8F0;font-weight:700;}
+  .tbl tbody td{padding:12px;border-bottom:1px solid #F1F5F9;}
+  .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;}
+  .pill-paid{background:#DCFCE7;color:#166534;}
+  .pill-unpaid{background:#FEE2E2;color:#991B1B;}
+  #loader{position:fixed;inset:0;background:white;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:99;}
+  .spinner{width:40px;height:40px;border:4px solid #F3F4F6;border-top:4px solid #00C0FF;border-radius:50%;animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
-<body class="min-h-screen">
+<body>
 
-<div id="loader">Fetching latest data from Google Sheets...</div>
+<div id="loader">
+  <div class="spinner"></div>
+  <p class="mt-4 font-bold text-gray-500">Syncing Bleuface Data...</p>
+</div>
 
-<header class="brand-grad text-white">
-  <div class="max-w-[1400px] mx-auto px-8 py-8 flex items-center justify-between flex-wrap gap-4">
+<header class="brand-grad text-white px-8 py-10">
+  <div class="max-w-7xl mx-auto flex justify-between items-end">
     <div>
-      <div class="text-xs tracking-[.3em] uppercase opacity-80">bleuface</div>
-      <h1 class="text-3xl font-bold mt-1">B2B Sales Dashboard</h1>
-      <p class="text-sm opacity-90 mt-2" id="period-text">Live Sync Enabled</p>
+      <p class="text-xs font-bold tracking-widest uppercase opacity-80">Bleuface Business</p>
+      <h1 class="text-4xl font-black mt-1">B2B Sales Dashboard</h1>
     </div>
-    <div class="text-right text-xs opacity-80">
-      <div id="gen-text">Last Updated: Just Now</div>
-      <div class="mt-1">All figures in PKR • 30-day payment terms</div>
-    </div>
+    <div class="text-right"><p id="last-update" class="text-sm opacity-80">Syncing...</p></div>
   </div>
 </header>
 
-<main class="max-w-[1400px] mx-auto px-8 py-8 space-y-6">
-  <div id="reminder-banner"></div>
-  <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="kpi-card"><div class="kpi-label">Net Sales</div><div class="kpi-value" id="kpi-net">—</div><div class="kpi-sub">after partner commission</div></div>
-    <div class="kpi-card"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="kpi-gross">—</div><div class="kpi-sub" id="kpi-disc"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Units Sold</div><div class="kpi-value" id="kpi-units">—</div><div class="kpi-sub" id="kpi-units-sub"></div></div>
-    <div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value" id="kpi-orders">—</div><div class="kpi-sub" id="kpi-aov"></div></div>
-  </section>
-  <section class="panel">
-    <div class="panel-title">Monthly Performance</div>
-    <div style="height:280px;"><canvas id="chart-monthly"></canvas></div>
-  </section>
-  </main>
+<main class="max-w-7xl mx-auto p-8">
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+    <div class="kpi-card"><div class="kpi-label">Total Net Revenue</div><div class="kpi-value" id="kpi-net">Rs 0</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Units Sold</div><div class="kpi-value" id="kpi-units">0</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Orders</div><div class="kpi-value" id="kpi-orders">0</div></div>
+    <div class="kpi-card"><div class="kpi-label">Unpaid Invoices</div><div class="kpi-value text-red-500" id="kpi-unpaid">0</div></div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2">
+      <div class="panel">
+        <h3 class="font-bold text-gray-700 mb-4">Revenue Trend (Monthly Net)</h3>
+        <canvas id="mainChart" height="140"></canvas>
+      </div>
+      <div class="panel">
+        <h3 class="font-bold text-gray-700 mb-4">Latest Invoices</h3>
+        <div class="overflow-x-auto">
+          <table class="tbl" id="invoice-table">
+            <thead><tr><th>Ref</th><th>Customer</th><th>Net Amount</th><th>Status</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="lg:col-span-1">
+      <div class="panel"><h3 class="font-bold text-gray-700 mb-4">Top 5 Products (by Value)</h3><div id="top-products" class="space-y-4"></div></div>
+      <div class="panel"><h3 class="font-bold text-gray-700 mb-4">Top Customers</h3><div id="top-customers" class="space-y-4"></div></div>
+    </div>
+  </div>
+</main>
 
 <script>
-// THIS IS THE ENGINE THAT CONNECTS TO YOUR GOOGLE SHEET
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT5K_L7_RjV2_f3V6_J5oR_O5H8T1Q0N7P2G7G_G7G7G7G7G7G7G7G7G/pub?output=csv"; 
+const ORDERS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=848015419&single=true&output=csv";
+const INVOICES_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?gid=1850157841&single=true&output=csv";
 
 async function init() {
-    Papa.parse(SHEET_CSV_URL, {
-        download: true,
-        header: true,
-        dynamicTyping: true,
-        complete: function(results) {
-            document.getElementById('loader').style.display = 'none';
-            processData(results.data);
-        }
-    });
+  const fetchCSV = (url) => new Promise(res => Papa.parse(url, {download:true, header:true, dynamicTyping:true, complete:res}));
+  const [ordersRes, invoicesRes] = await Promise.all([fetchCSV(ORDERS_URL), fetchCSV(INVOICES_URL)]);
+  render(ordersRes.data, invoicesRes.data);
 }
 
-function processData(rawData) {
-    // This function will take the rows from your Google Sheet 
-    // and map them to the charts and KPIs you already have.
-    console.log("Data loaded:", rawData);
-    
-    // Logic to update document.getElementById('kpi-net') etc. goes here
-    // based on how your Google Sheet columns are named.
-}
+function render(orders, invoices) {
+  let net=0, units=0, ords=0, unpaidCount=0;
+  let skus={}, custs={}, monthly={};
 
-window.onload = init;
+  orders.forEach(r => {
+    if(!r['Order Date']) return;
+    const val = r['Line Net'] || 0;
+    net += val;
+    units += (r['Quantity'] || 0);
+    const m = r['Order Date'].substring(0, 7);
+    monthly[m] = (monthly[m] || 0) + val;
+    skus[r['Product']] = (skus[r['Product']] || 0) + val;
+    custs[r['Customer']] = (custs[r['Customer']] || 0) + val;
+  });
+
+  const uniqueOrders = new Set(orders.map(r => r['Order Ref'])).size;
+  invoices.forEach(inv => { if(inv['Paid?'] === false || inv['Paid?'] === 'FALSE') unpaidCount++; });
+
+  document.getElementById('kpi-net').innerText = 'Rs ' + Math.round(net).toLocaleString();
+  document.getElementById('kpi-units').innerText = units.toLocaleString();
+  document.getElementById('kpi-orders').innerText = uniqueOrders;
+  document.getElementById('kpi-unpaid').innerText = unpaidCount;
+  document.getElementById('last-update').innerText = 'Last Sync: ' + new Date().toLocaleTimeString();
+
+  // Charts & Tables
+  const sortedSkus = Object.entries(skus).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  document.getElementById('top-products').innerHTML = sortedSkus.map(([n,v])=>`<div class="flex justify-between text-sm"><span>${n}</span><b>Rs ${Math.round(v).toLocaleString()}</b></div>`).join('');
+  
+  const sortedCusts = Object.entries(custs).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  document.getElementById('top-customers').innerHTML = sortedCusts.map(([n,v])=>`<div class="flex justify-between text-sm"><span>${n}</span><b>Rs ${Math.round(v).toLocaleString()}</b></div>`).join('');
+
+  const tableBody = document.querySelector('#invoice-table tbody');
+  tableBody.innerHTML = invoices.slice(0,10).map(inv => `<tr><td>${inv['Order Ref']}</td><td>${inv['Customer']}</td><td>Rs ${Math.round(inv['Net (PKR)']).toLocaleString()}</td><td><span class="pill ${inv['Paid?']===true||inv['Paid?']==='TRUE'?'pill-paid':'pill-unpaid'}">${inv['Paid?']===true||inv['Paid?']==='TRUE'?'Paid':'Pending'}</span></td></tr>`).join('');
+
+  const mKeys = Object.keys(monthly).sort();
+  new Chart(document.getElementById('mainChart'), {
+    type: 'bar',
+    data: { labels: mKeys, datasets: [{ label: 'Net Revenue', data: mKeys.map(k=>monthly[k]), backgroundColor: '#00C0FF', borderRadius: 4 }] },
+    options: { plugins: { legend: { display: false } } }
+  });
+
+  document.getElementById('loader').style.display = 'none';
+}
+init();
 </script>
 </body>
 </html>
