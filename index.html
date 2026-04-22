@@ -682,7 +682,15 @@ function col(row, ...names) {
   return undefined;
 }
 
-function parseNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+function parseNum(v) {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  // Strip thousand-separator commas, then extract the first signed number.
+  // Handles: "1,257.00", "Rs. 1,257", "$12,345.67", "  500  ", "-763.34"
+  const cleaned = String(v).replace(/,/g, '').trim();
+  const match = cleaned.match(/-?\d+(?:\.\d+)?/);
+  return match ? parseFloat(match[0]) : 0;
+}
 
 /* ─── DATA MAPPERS (receive parsed data arrays from loadSheet) ── */
 function mapOrders(data) {
@@ -877,6 +885,21 @@ function computeMetrics(){
   const totalGross  = orders.reduce((s,r)=>s+r.lineGross,0);
   const totalCost   = orders.reduce((s,r)=>s+r.lineCost,0);
   const totalProfit = orders.reduce((s,r)=>s+r.lineProfit,0);
+
+  // ── Data quality diagnostics ─────────────────────────────
+  console.log('📊 Aggregate totals:', {
+    'Net Revenue':   Math.round(totalNet).toLocaleString(),
+    'Gross Sales':   Math.round(totalGross).toLocaleString(),
+    'Cost of Goods': Math.round(totalCost).toLocaleString(),
+    'Gross Profit':  Math.round(totalProfit).toLocaleString(),
+    'Sanity check (Net - Cost):': Math.round(totalNet - totalCost).toLocaleString(),
+  });
+  if (totalProfit > totalNet) {
+    console.warn('⚠️ Gross Profit (' + Math.round(totalProfit) + ') exceeds Net Revenue (' + Math.round(totalNet) + ') — this usually means number parsing stripped thousand-separator commas, or Line Net / Line Profit columns are mapped incorrectly. Check the first order row:', orders[0]);
+  }
+  if (totalGross < totalNet) {
+    console.warn('⚠️ Gross Sales < Net Revenue — possible column mapping issue.');
+  }
   const totalComm   = orders.reduce((s,r)=>s+r.lineCommission,0);
   const totalUnits  = orders.reduce((s,r)=>s+r.quantity,0);
   const focOrders   = orders.filter(r=>r.isFOC);
