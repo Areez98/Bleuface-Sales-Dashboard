@@ -238,8 +238,8 @@ tbody tr:last-child td{border-bottom:none}
   <div class="grid4">
     <div class="card card-accent-green"><div class="card-title">Gross Profit</div><div class="card-value val-green" id="kpi-profit">—</div><div class="card-sub" id="kpi-margin-sub">net − COGS</div></div>
     <div class="card card-accent-green"><div class="card-title">Gross Margin %</div><div class="card-value val-green" id="kpi-margin">—</div><div class="card-sub">profit / net revenue</div></div>
-    <div class="card card-accent-red"><div class="card-title">Operating Expenses</div><div class="card-value val-red" id="kpi-exp-total">—</div><div class="card-sub">excl. owner drawings</div></div>
-    <div class="card card-accent-gold"><div class="card-title">Net Profit</div><div class="card-value" id="kpi-net-profit" style="color:var(--gold)">—</div><div class="card-sub" id="kpi-net-profit-sub">gross profit − opex</div></div>
+    <div class="card card-accent-red"><div class="card-title">Total Expenses</div><div class="card-value val-red" id="kpi-exp-total">—</div><div class="card-sub">ops + drawings</div></div>
+    <div class="card card-accent-gold"><div class="card-title">Net Profit</div><div class="card-value" id="kpi-net-profit" style="color:var(--gold)">—</div><div class="card-sub" id="kpi-net-profit-sub">gross profit − all expenses</div></div>
   </div>
 
   <div class="section-heading gap-top">Receivables</div>
@@ -497,9 +497,8 @@ tbody tr:last-child td{border-bottom:none}
     <div class="card card-accent-red"><div class="card-title">Cost of Goods</div><div class="card-value val-red" id="fin-cogs">—</div><div class="card-sub" id="fin-cogs-sub"></div></div>
     <div class="card card-accent-green"><div class="card-title">Gross Profit</div><div class="card-value val-green" id="fin-gp">—</div><div class="card-sub" id="fin-gp-sub"></div></div>
     <div class="card card-accent-red"><div class="card-title">Operating Expenses</div><div class="card-value val-red" id="fin-opex">—</div><div class="card-sub" id="fin-opex-sub"></div></div>
-    <div class="card card-accent-gold"><div class="card-title">Net Profit / Loss</div><div class="card-value" id="fin-np">—</div><div class="card-sub" id="fin-np-sub">gross profit − opex</div></div>
-    <div class="card card-accent-purple"><div class="card-title">Drawings</div><div class="card-value" style="color:var(--purple)" id="fin-drawings">—</div><div class="card-sub">owner withdrawals (below-the-line)</div></div>
-    <div class="card card-accent-gold"><div class="card-title">Retained Earnings</div><div class="card-value" id="fin-retained">—</div><div class="card-sub" id="fin-retained-sub">net profit − drawings</div></div>
+    <div class="card card-accent-purple"><div class="card-title">Drawings</div><div class="card-value" style="color:var(--purple)" id="fin-drawings">—</div><div class="card-sub">owner withdrawals</div></div>
+    <div class="card card-accent-gold"><div class="card-title">Net Profit / Loss</div><div class="card-value" id="fin-np">—</div><div class="card-sub" id="fin-np-sub">gross profit − opex − drawings</div></div>
     <div class="card"><div class="card-title">Expense / Revenue</div><div class="card-value" id="fin-exp-ratio">—</div><div class="card-sub">opex as % of net revenue</div></div>
     <div class="card"><div class="card-title">Net Profit Margin</div><div class="card-value" id="fin-npm">—</div><div class="card-sub">net profit / net revenue</div></div>
   </div>
@@ -571,15 +570,14 @@ tbody tr:last-child td{border-bottom:none}
 /* ╔══════════════════════════════════════════════════════╗
    ║  CONFIGURATION — All Google Sheets tab URLs          ║
    ╚══════════════════════════════════════════════════════╝ */
-// Publish-to-web CSV URLs (one per tab) — use exactly the URLs the sheet owner provided
-const SHEET_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub';
+const BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTUduhmiM_Ee50NL3Uo87q5mjASEff8wR7JMuxuh2NuvewjNUslqa0E7u-VL0edCZ4XANJyZty89wHz/pub?single=true&output=csv&gid=';
 const CONFIG = {
-  ORDERS_CSV:     SHEET_BASE + '?gid=848015419&single=true&output=csv',
-  INVOICES_CSV:   SHEET_BASE + '?gid=1850157841&single=true&output=csv',
-  CATEGORIES_CSV: SHEET_BASE + '?gid=1573398675&single=true&output=csv',
-  PRODUCTS_CSV:   SHEET_BASE + '?gid=1615991162&single=true&output=csv',
-  EXPENSES_CSV:   SHEET_BASE + '?gid=154789322&single=true&output=csv',
-  DRAWINGS_CSV:   SHEET_BASE + '?gid=1948584787&single=true&output=csv',
+  ORDERS_CSV:     BASE + '848015419',
+  INVOICES_CSV:   BASE + '1850157841',
+  PRODUCTS_CSV:   BASE + '1615991162',
+  EXPENSES_CSV:   BASE + '154789322',
+  DRAWINGS_CSV:   BASE + '1948584787',
+  CATEGORIES_CSV: BASE + '1573398675',
   COMMISSIONS_CSV:BASE + '1877178879',
   PAYMENT_TERMS_DAYS: 30,
   AUTO_REFRESH_MS: 5 * 60 * 1000,
@@ -1026,18 +1024,16 @@ function computeMetrics(){
   const deadStockSKUs = inventoryRows.filter(r=>r.isDead);
   const avgDaysStock = inventoryRows.filter(r=>r.daysOfStock!=null&&isFinite(r.daysOfStock)).reduce((s,r,_,a)=>s+r.daysOfStock/a.length,0);
 
-  // ── Expenses — EXPENSES is pure opex, DRAWINGS are equity distributions (below-the-line)
+  // ── Expenses — EXPENSES is pure opex, DRAWINGS is separate
   const opexRows    = EXPENSES;
   const drawingsRows= DRAWINGS;
   const totalOpex   = opexRows.reduce((s,e)=>s+e.amount,0);
   const totalDrawings=drawingsRows.reduce((s,e)=>s+e.amount,0);
-  const totalExpenses = totalOpex;                   // P&L expenses only (drawings are not expenses)
+  const totalExpenses = totalOpex+totalDrawings;
   const grossProfit = totalProfit;
-  const netProfit = grossProfit - totalOpex;         // standard accounting: drawings don't reduce net profit
-  const retainedEarnings = netProfit - totalDrawings; // what's left after owner withdrawals
+  const netProfit = grossProfit - totalOpex - totalDrawings;
   const expenseRatio = totalNet>0?totalOpex/totalNet:0;
   const netProfitMargin = totalNet>0?netProfit/totalNet:0;
-  const retainedMargin = totalNet>0?retainedEarnings/totalNet:0;
   const grossMarginPct = totalNet>0?grossProfit/totalNet:0;
   const breakEvenRevenue = grossMarginPct>0?totalOpex/grossMarginPct:null;
   const avgOrderValue = totalOrders>0?totalNet/totalOrders:0;
@@ -1085,8 +1081,8 @@ function computeMetrics(){
     customers, skus, categories, months, invoices, momGrowth,
     outstanding,outCount,overdue,overCount,dueSoon,dsCount,collected,colCount,
     inventoryRows, totalStockValue, lowStockSKUs, deadStockSKUs, avgDaysStock,
-    totalOpex, totalDrawings, totalExpenses, grossProfit, netProfit, retainedEarnings,
-    expenseRatio, netProfitMargin, retainedMargin, grossMarginPct, breakEvenRevenue, breakEvenUnits,
+    totalOpex, totalDrawings, totalExpenses, grossProfit, netProfit,
+    expenseRatio, netProfitMargin, grossMarginPct, breakEvenRevenue, breakEvenUnits,
     expCatMap, expMonthMap, opexRows, drawingsRows,
     active, atRisk, lapsed,
     commPct: totalGross>0?totalComm/totalGross:0,
@@ -1499,12 +1495,6 @@ function renderFinanceSection(M){
   npEl2.textContent = fmt.compact(M.netProfit);
   npEl2.style.color = M.netProfit>=0?'var(--gold)':'var(--red)';
   $('fin-np-sub').textContent = M.netProfit>=0?`+${fmt.pct1(M.netProfitMargin)} net margin`:`Net loss: ${fmt.pct1(Math.abs(M.netProfitMargin))}`;
-  const retEl = $('fin-retained');
-  retEl.textContent = fmt.compact(M.retainedEarnings);
-  retEl.style.color = M.retainedEarnings>=0?'var(--gold)':'var(--red)';
-  $('fin-retained-sub').textContent = M.retainedEarnings>=0
-    ? `+${fmt.pct1(M.retainedMargin)} retained margin`
-    : `After drawings: ${fmt.pct1(Math.abs(M.retainedMargin))} deficit`;
   $('fin-exp-ratio').textContent = fmt.pct1(M.expenseRatio);
   $('fin-npm').textContent = fmt.pct1(M.netProfitMargin);
 
@@ -1526,8 +1516,8 @@ function renderFinanceSection(M){
       : `⚠️ Current revenue does not cover all operating expenses. Need Rs.${fmt.money(Math.abs(surplus))} more in revenue to break even.`;
   }
 
-  // Waterfall chart — Net Profit is the P&L bottom line; Drawings + Retained sit below it (equity view)
-  const wfLabels = ['Gross Sales','Commission','Net Revenue','COGS','Gross Profit','Op. Expenses','Net Profit','Drawings','Retained'];
+  // Waterfall chart
+  const wfLabels = ['Gross Sales','Commission','Net Revenue','COGS','Gross Profit','Op. Expenses','Drawings','Net Profit'];
   const wfData = [
     M.totalGross,
     -M.totalComm,
@@ -1535,16 +1525,10 @@ function renderFinanceSection(M){
     -M.totalCost,
     M.grossProfit,
     -M.totalOpex,
-    M.netProfit,
     -M.totalDrawings,
-    M.retainedEarnings,
+    M.netProfit,
   ];
-  const wfColors = [
-    PALETTE[0], PALETTE[6], PALETTE[0], PALETTE[6], PALETTE[2], PALETTE[6],
-    M.netProfit>=0?PALETTE[1]:PALETTE[6],
-    PALETTE[6],
-    M.retainedEarnings>=0?PALETTE[1]:PALETTE[6],
-  ];
+  const wfColors = [PALETTE[0],PALETTE[6],PALETTE[0],PALETTE[6],PALETTE[2],PALETTE[6],PALETTE[6],M.netProfit>=0?PALETTE[1]:PALETTE[6]];
   destroyChart('chart-waterfall');
   charts['chart-waterfall'] = new Chart($('chart-waterfall'),{
     type:'bar',
